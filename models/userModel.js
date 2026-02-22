@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema(
     username: {
       type: String,
       // required: [true, 'Please enter your username'],
-      unique: true,
+      // unique: true,
       sparse: true, // Allows for some users (Google sign-in) to skip this field
     },
     mobile: {
