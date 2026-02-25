@@ -112,64 +112,52 @@ exports.createProduct = async (req, res) => {
     }
 };
 
-
-// ✅ GET ALL PRODUCTS (UPDATED & CLEAN)
 // exports.getAllProducts = async (req, res) => {
 //     try {
 //         const {
 //             category,
 //             subCategory,
-//             featured,
-//             search,         // Search Term
-//             sort,           // Sort Order
+//             search,
+//             sort = "newest",
 //             page = 1,
 //             limit = 10,
 //         } = req.query;
 
-//         // 1. Build the Filter
 //         let filter = { isActive: true };
 
-//         // --- UPDATED SEARCH LOGIC ---
-//         // Checks if 'search' matches Name OR Manufacturer
-//         if (search) {
-//             filter.$or = [
-//                 { name: { $regex: search, $options: "i" } },
-//                 { manufacturer: { $regex: search, $options: "i" } }
-//             ];
-//         }
-
-//         // Category Filter
+//         // Category filter
 //         if (category) {
-//             const cat = await Category.findOne({ name: category });
-//             if (!cat) return res.status(404).json({ message: "Category not found" });
-//             filter.category = cat._id;
+//             filter.category = category;
 //         }
 
-//         // SubCategory Filter
+//         // SubCategory filter
 //         if (subCategory) {
 //             filter.subCategory = subCategory;
 //         }
 
-//         // Featured Filter
-//         if (featured !== undefined) {
-//             filter.featured = featured === "true";
+//         // Search (global or contextual)
+//         if (search) {
+//             filter.$or = [
+//                 { name: new RegExp(search, "i") },
+//                 { manufacturer: new RegExp(search, "i") },
+//             ];
 //         }
 
-//         // 2. Sorting Logic
-//         let sortOption = {};
-//         if (sort === "price_asc") sortOption.price = 1;      // Low to High
-//         if (sort === "price_desc") sortOption.price = -1;    // High to Low
-//         if (sort === "newest") sortOption.createdAt = -1;    // Newest first
+//         // Sorting
+//         let sortQuery = { createdAt: -1 }; // newest default
 
-//         // 3. Fetch Products
+//         if (sort === "price_asc") sortQuery = { price: 1 };
+//         if (sort === "price_desc") sortQuery = { price: -1 };
+
+//         const skip = (page - 1) * limit;
+
 //         const products = await Product.find(filter)
 //             .populate("category", "name")
 //             .populate("subCategory", "name")
-//             .sort(sortOption)
-//             .skip((page - 1) * limit)
+//             .sort(sortQuery)
+//             .skip(skip)
 //             .limit(Number(limit));
 
-//         // 4. Get Total Count (for Pagination)
 //         const totalProducts = await Product.countDocuments(filter);
 
 //         res.status(200).json({
@@ -179,10 +167,10 @@ exports.createProduct = async (req, res) => {
 //             products,
 //         });
 //     } catch (error) {
-//         console.error("Error in getAllProducts:", error);
 //         res.status(500).json({ message: error.message });
 //     }
 // };
+
 exports.getAllProducts = async (req, res) => {
     try {
         const {
@@ -191,22 +179,22 @@ exports.getAllProducts = async (req, res) => {
             search,
             sort = "newest",
             page = 1,
-            limit = 10,
+            minPrice,
+            maxPrice,
+            featured
         } = req.query;
+
+        // ✅ Only default to 10 if limit is NOT provided
+        const limitValue = req.query.limit ? Number(req.query.limit) : 10;
+
+        // Safety: prevent invalid values
+        const safeLimit = limitValue > 0 ? limitValue : 10;
 
         let filter = { isActive: true };
 
-        // Category filter
-        if (category) {
-            filter.category = category;
-        }
+        if (category) filter.category = category;
+        if (subCategory) filter.subCategory = subCategory;
 
-        // SubCategory filter
-        if (subCategory) {
-            filter.subCategory = subCategory;
-        }
-
-        // Search (global or contextual)
         if (search) {
             filter.$or = [
                 { name: new RegExp(search, "i") },
@@ -214,29 +202,40 @@ exports.getAllProducts = async (req, res) => {
             ];
         }
 
-        // Sorting
-        let sortQuery = { createdAt: -1 }; // newest default
+        // 🔥 PRICE FILTER
+        if (minPrice || maxPrice) {
+            filter.price = {};
+            if (minPrice) filter.price.$gte = Number(minPrice);
+            if (maxPrice) filter.price.$lte = Number(maxPrice);
+        }
 
+        // 🔥 FEATURED FILTER
+        if (featured === "true") {
+            filter.featured = true;
+        }
+
+        let sortQuery = { createdAt: -1 };
         if (sort === "price_asc") sortQuery = { price: 1 };
         if (sort === "price_desc") sortQuery = { price: -1 };
 
-        const skip = (page - 1) * limit;
+        const skip = (Number(page) - 1) * safeLimit;
 
         const products = await Product.find(filter)
             .populate("category", "name")
             .populate("subCategory", "name")
             .sort(sortQuery)
             .skip(skip)
-            .limit(Number(limit));
+            .limit(safeLimit);
 
         const totalProducts = await Product.countDocuments(filter);
 
         res.status(200).json({
             totalProducts,
             currentPage: Number(page),
-            totalPages: Math.ceil(totalProducts / limit),
+            totalPages: Math.ceil(totalProducts / safeLimit),
             products,
         });
+
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
