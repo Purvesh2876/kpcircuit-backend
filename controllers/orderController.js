@@ -150,6 +150,41 @@ exports.myOrders = async (req, res) => {
     }
 };
 
+exports.getSingleOrder = async (req, res) => {
+    console.log("Get Single Order - User ID:", req.user._id, "Order ID:", req.params.id); // Debugging line
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate("items.product");
+    console.log("Fetched Order:", order.user.toString(), 2, req.user._id); // Debugging line
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // 🔐 Security Check
+    if (order.user.toString() !== req.user._id) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to access this order",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      order,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 
 // ADMIN - Get All Orders
 exports.adminAllOrders = async (req, res) => {

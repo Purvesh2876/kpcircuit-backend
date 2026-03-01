@@ -255,11 +255,11 @@ const verifyPayment = async (req, res) => {
         orderEntry.paymentStatus = "paid";
         orderEntry.orderStatus = "packed";
         // Push into status history
-        orderEntry.statusHistory.push({
-            status: "paid",
-            timestamp: new Date(),
-            updatedBy: "system"
-        });
+        // orderEntry.statusHistory.push({
+        //     status: "paid",
+        //     timestamp: new Date(),
+        //     updatedBy: "system"
+        // });
         const alreadyPaid = orderEntry.statusHistory?.some(
             (entry) => entry.status === "paid"
         );
@@ -275,7 +275,8 @@ const verifyPayment = async (req, res) => {
 
         return res.json({
             success: true,
-            message: "Payment verified successfully"
+            message: "Payment verified successfully",
+            orderId: orderEntry._id
         });
 
     } catch (error) {
