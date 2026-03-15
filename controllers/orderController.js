@@ -1,24 +1,152 @@
 const Order = require('../models/orderModel');
 const paymentModel = require("../models/paymentModel");
 const customer = require("../models/userModel");
+const Product = require("../models/productModel");
 const Razorpay = require("razorpay");
+
+// exports.createOrderAndProcessPayment = async (req, res) => {
+
+//     // // --- DB FIX: Run this once to fix the duplicate error ---
+//     // await Order.collection.dropIndex('paymentOrderId_1').catch(() => { });
+//     // // --------------------------------------------------------
+
+//     const {
+//         currency,
+//         notes,
+//         shippingInfo,
+//         items,
+//     } = req.body;
+
+//     const customerid = req.user?._id || req.user; // Support both { _id } and raw ID from auth middleware
+
+//     const razorpay = new Razorpay({
+//         key_id: process.env.RAZORPAY_KEY_ID,
+//         key_secret: process.env.RAZORPAY_KEY_SECRET,
+//     });
+
+//     try {
+//         const user = await customer.findById(customerid);
+
+//         if (!user) {
+//             return res.status(404).json({ message: "User not found" });
+//         }
+
+//         // VALIDATION: Ensure order items are present
+//         if (!Array.isArray(items) || items.length === 0) {
+//             return res.status(400).json({ success: false, message: "No items provided for the order" });
+//         }
+
+//         // 0. Validate stock and calculate totals based on current price
+//         const productIds = items.map((item) => item.product);
+//         const products = await Product.find({ _id: { $in: productIds } });
+//         const productById = products.reduce((acc, product) => {
+//             acc[product._id.toString()] = product;
+//             return acc;
+//         }, {});
+
+//         let totalAmount = 0;
+//         const processedItems = [];
+
+//         for (const item of items) {
+//             const prod = productById[item.product];
+//             if (!prod) {
+//                 return res.status(404).json({ success: false, message: `Product not found: ${item.product}` });
+//             }
+
+//             const quantity = Number(item.quantity);
+//             if (quantity <= 0) {
+//                 return res.status(400).json({ success: false, message: `Invalid quantity for ${prod.name}` });
+//             }
+
+//             if (prod.stock < quantity) {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: `Insufficient stock for ${prod.name}. Available: ${prod.stock}`
+//                 });
+//             }
+
+//             const priceAtOrder = prod.price;
+//             const totalPrice = priceAtOrder * quantity;
+//             totalAmount += totalPrice;
+
+//             processedItems.push({
+//                 product: prod._id,
+//                 color: item.color,
+//                 quantity,
+//                 priceAtOrder,
+//                 totalPrice,
+//             });
+//         }
+
+//         // 1. Create Razorpay Order
+//         const order = await razorpay.orders.create({
+//             amount: totalAmount * 100, // Convert to paise
+//             currency,
+//             receipt: `receipt_${customerid}_${Date.now()}`,
+//             notes,
+//         });
+
+//         // 2. Create Payment Log (using order.id)
+//         const paymentEntry = await paymentModel.create({
+//             customerid: user._id,
+//             entity: order.entity,
+//             amount: order.amount,
+//             amount_paid: order.amount_paid,
+//             amount_due: order.amount_due,
+//             currency: order.currency,
+//             receipt: order.receipt,
+//             status: order.status,
+//             attempts: order.attempts,
+//             notes: order.notes,
+//             created_at: order.created_at || new Date(),
+//             order_id: order.id,
+//         });
+
+//         // 3. Create and Save Internal Order (using order.id)
+//         const newOrder = new Order({
+//             user: customerid,
+//             items: processedItems,
+//             shippingInfo,
+//             totalAmount,
+//             orderId: order.id, // Maps to the unique Razorpay ID
+//             status: "pending",
+//             statusHistory: [{ status: "pending", timestamp: new Date() }]
+//         });
+
+//         const savedOrder = await newOrder.save();
+
+//         res.status(201).json({
+//             success: true,
+//             razorpayOrder: order,
+//             savedOrder,
+//             paymentEntry,
+//         });
+
+//     } catch (error) {
+//         console.error("Error processing payment and creating order:", error);
+
+//         // Log specifically if it's a duplicate error
+//         if (error.code === 11000) {
+//             console.log("Duplicate Key Detail:", error.keyValue);
+//         }
+
+//         res.status(500).json({ success: false, message: "Server Error" });
+//     }
+// };
+
+// USER - Get My Orders
+// USER: Get My Orders
 
 exports.createOrderAndProcessPayment = async (req, res) => {
 
-    // --- DB FIX: Run this once to fix the duplicate error ---
-    await Order.collection.dropIndex('paymentOrderId_1').catch(() => { });
-    // --------------------------------------------------------
-
     const {
-        amount,
         currency,
-        receipt,
         notes,
         shippingInfo,
         items,
     } = req.body;
 
-    const customerid = req.user;
+    const customerid = req.user?._id || req.user;
 
     const razorpay = new Razorpay({
         key_id: process.env.RAZORPAY_KEY_ID,
@@ -26,85 +154,137 @@ exports.createOrderAndProcessPayment = async (req, res) => {
     });
 
     try {
+
         const user = await customer.findById(customerid);
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        // 1. Create Razorpay Order
-        const order = await razorpay.orders.create({
-            amount: amount * 100, // Convert to paise
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "No items provided for the order"
+            });
+        }
+
+        const productIds = items.map((item) => item.product);
+
+        const products = await Product.find({
+            _id: { $in: productIds }
+        });
+
+        const productById = products.reduce((acc, product) => {
+            acc[product._id.toString()] = product;
+            return acc;
+        }, {});
+
+        let totalAmount = 0;
+
+        const processedItems = [];
+
+        for (const item of items) {
+
+            const prod = productById[item.product];
+
+            if (!prod) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Product not found: ${item.product}`
+                });
+            }
+
+            const quantity = Number(item.quantity);
+
+            if (quantity <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid quantity for ${prod.name}`
+                });
+            }
+
+            if (prod.stock < quantity) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Insufficient stock for ${prod.name}. Available: ${prod.stock}`
+                });
+            }
+
+            const priceAtOrder = prod.price;
+
+            const totalPrice = priceAtOrder * quantity;
+
+            totalAmount += totalPrice;
+
+            processedItems.push({
+                product: prod._id,
+                color: item.color,
+                quantity,
+                priceAtOrder,
+                totalPrice,
+            });
+        }
+
+        const razorpayOrder = await razorpay.orders.create({
+            amount: totalAmount * 100,
             currency,
-            receipt: `receipt_${Date.now()}`,
+            receipt: `receipt_${customerid}_${Date.now()}`,
             notes,
         });
 
-        // 2. Create Payment Log (using order.id)
         const paymentEntry = await paymentModel.create({
             customerid: user._id,
-            entity: order.entity,
-            amount: order.amount,
-            amount_paid: order.amount_paid,
-            amount_due: order.amount_due,
-            currency: order.currency,
-            receipt: order.receipt,
-            status: order.status,
-            attempts: order.attempts,
-            notes: order.notes,
-            created_at: order.created_at || new Date(),
-            order_id: order.id,
+            entity: razorpayOrder.entity,
+            amount: razorpayOrder.amount,
+            amount_paid: razorpayOrder.amount_paid,
+            amount_due: razorpayOrder.amount_due,
+            currency: razorpayOrder.currency,
+            receipt: razorpayOrder.receipt,
+            status: razorpayOrder.status,
+            attempts: razorpayOrder.attempts,
+            notes: razorpayOrder.notes,
+            created_at: razorpayOrder.created_at || new Date(),
+            order_id: razorpayOrder.id,
         });
 
-        // 3. Calculate Totals
-        let totalAmount = 0;
-        const processedItems = items.map((item) => {
-            const totalPrice = item.priceAtAdd * item.quantity;
-            totalAmount += totalPrice;
-
-            return {
-                product: item.product,
-                color: item.color,
-                quantity: item.quantity,
-                priceAtOrder: item.priceAtAdd,
-                totalPrice,
-            };
-        });
-
-        // 4. Create and Save Internal Order (using order.id)
         const newOrder = new Order({
             user: customerid,
             items: processedItems,
             shippingInfo,
             totalAmount,
-            orderId: order.id, // Maps to the unique Razorpay ID
-            status: "pending",
-            statusHistory: [{ status: "pending", timestamp: new Date() }]
+            orderId: razorpayOrder.id,
+            paymentStatus: "pending",
+            orderStatus: "pending",
+            statusHistory: [{
+                status: "pending",
+                timestamp: new Date()
+            }]
         });
 
         const savedOrder = await newOrder.save();
 
         res.status(201).json({
             success: true,
-            razorpayOrder: order,
+            razorpayOrder,
             savedOrder,
             paymentEntry,
         });
 
     } catch (error) {
+
         console.error("Error processing payment and creating order:", error);
 
-        // Log specifically if it's a duplicate error
         if (error.code === 11000) {
             console.log("Duplicate Key Detail:", error.keyValue);
         }
 
-        res.status(500).json({ success: false, message: "Server Error" });
+        res.status(500).json({
+            success: false,
+            message: "Server Error"
+        });
     }
 };
 
-// USER - Get My Orders
-// USER: Get My Orders
 exports.myOrders = async (req, res) => {
     try {
         const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -152,37 +332,37 @@ exports.myOrders = async (req, res) => {
 
 exports.getSingleOrder = async (req, res) => {
     console.log("Get Single Order - User ID:", req.user._id, "Order ID:", req.params.id); // Debugging line
-  try {
-    const order = await Order.findById(req.params.id)
-      .populate("items.product");
-    console.log("Fetched Order:", order.user.toString(), 2, req.user._id); // Debugging line
+    try {
+        const order = await Order.findById(req.params.id)
+            .populate("items.product");
+        console.log("Fetched Order:", order.user.toString(), 2, req.user._id); // Debugging line
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found",
+            });
+        }
+
+        // 🔐 Security Check
+        if (order.user.toString() !== req.user._id) {
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized to access this order",
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            order,
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
     }
-
-    // 🔐 Security Check
-    if (order.user.toString() !== req.user._id) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to access this order",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      order,
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
 };
 
 

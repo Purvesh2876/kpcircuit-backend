@@ -27,7 +27,9 @@ app.use(cors({
   ],
   credentials: true,
 }));
-app.use(express.json()); // For parsing application/json
+// app.use(express.json()); // For parsing application/json
+app.use("/api/order/razorpay-webhook", express.raw({ type: "application/json" }));
+app.use(express.json());
 app.use(cookieParser()); // For parsing cookiess
 
 // Add multer to handle multipart/form-data
