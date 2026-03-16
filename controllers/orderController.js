@@ -137,6 +137,11 @@ const Razorpay = require("razorpay");
 // USER - Get My Orders
 // USER: Get My Orders
 
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
 exports.createOrderAndProcessPayment = async (req, res) => {
 
     const {
@@ -148,10 +153,6 @@ exports.createOrderAndProcessPayment = async (req, res) => {
 
     const customerid = req.user?._id || req.user;
 
-    const razorpay = new Razorpay({
-        key_id: process.env.RAZORPAY_KEY_ID,
-        key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
 
     try {
 
@@ -225,10 +226,12 @@ exports.createOrderAndProcessPayment = async (req, res) => {
             });
         }
 
+
+        const receipt = `r_${customerid.toString().slice(-4)}_${Date.now().toString(36)}`;
         const razorpayOrder = await razorpay.orders.create({
             amount: totalAmount * 100,
             currency,
-            receipt: `receipt_${customerid}_${Date.now()}`,
+            receipt: receipt,
             notes,
         });
 
