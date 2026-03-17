@@ -7,13 +7,17 @@ const {
     getProductById,
     updateProduct,
     deleteProduct,
-    searchProducts
+    searchProducts,
+    addStock
 } = require('../controllers/productController');
 
 const router = express.Router();
 
 // Create a new product with image upload
 router.post('/', upload.array('images'), createProduct); // Use upload.array('images')
+
+// add stock to a product
+router.post("/:id/add-stock", addStock);
 
 // Get all products
 router.get('/', getAllProducts);

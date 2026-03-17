@@ -59,9 +59,13 @@ const orderSchema = new mongoose.Schema(
       enum: ["pending", "paid", "failed"],
       default: "pending",
     },
+    stockDeducted: {
+      type: Boolean,
+      default: false,
+    },
     orderStatus: {
       type: String,
-      enum: ["placed", "packed", "shipped", "delivered", "cancelled"],
+      enum: ["pending", "placed", "packed", "shipped", "delivered", "cancelled"],
       default: "placed",
     },
   },

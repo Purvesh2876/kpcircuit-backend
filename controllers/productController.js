@@ -185,6 +185,45 @@ exports.createProduct = async (req, res) => {
     }
 };
 
+exports.addStock = async (req, res) => {
+    try {
+        const { quantity, note } = req.body;
+
+        if (!quantity || Number(quantity) <= 0) {
+            return res.status(400).json({ message: "Invalid quantity" });
+        }
+
+        const product = await Product.findById(req.params.id);
+
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        // ✅ Update stock
+        product.stock += Number(quantity);
+        await product.save();
+
+        // ✅ Create inventory log
+        await InventoryLog.create({
+            product: product._id,
+            type: "IN",
+            quantity: Number(quantity),
+            reason: "PURCHASE",
+            note: note || "Stock added manually",
+            createdBy: req.user?.email || "admin",
+        });
+
+        res.status(200).json({
+            message: "Stock added successfully",
+            stock: product.stock,
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 exports.getAllProducts = async (req, res) => {
     try {
         const {

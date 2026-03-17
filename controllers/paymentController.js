@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const Payment = require('../models/paymentModel'); // Check your file path
 const Order = require('../models/orderModel'); // Check your file path (might be orderModel)
 const Product = require('../models/productModel');
+InventoryLog = require('../models/inventoryLogModel'); // Check your file path
 
 // Function to save payment details (Optional: If createOrder handles this, this might be unused, but keeping it to prevent router errors)
 const savePayment = async (req, res) => {
@@ -24,117 +25,6 @@ const savePayment = async (req, res) => {
         res.status(500).json({ error: 'Error saving payment' });
     }
 };
-
-
-// const verifyPayment = async (req, res) => {
-//     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-
-//     const secret = process.env.RAZORPAY_KEY_SECRET;
-
-//     try {
-//         const generated_signature = crypto.createHmac('sha256', secret)
-//             .update(razorpay_order_id + "|" + razorpay_payment_id)
-//             .digest('hex');
-
-//         if (generated_signature !== razorpay_signature) {
-//             await Payment.findOneAndUpdate(
-//                 { order_id: razorpay_order_id },
-//                 { status: "failed" }
-//             );
-
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "Signature verification failed"
-//             });
-//         }
-
-//         const razorpay = new Razorpay({
-//             key_id: process.env.RAZORPAY_KEY_ID,
-//             key_secret: process.env.RAZORPAY_KEY_SECRET,
-//         });
-
-//         const paymentDetails = await razorpay.payments.fetch(razorpay_payment_id);
-
-//         const paymentEntry = await Payment.findOne({ order_id: razorpay_order_id });
-
-//         if (paymentEntry) {
-//             paymentEntry.status = "paid";
-//             paymentEntry.payment_id = razorpay_payment_id;
-//             paymentEntry.signature = razorpay_signature;
-//             paymentEntry.amount_paid = paymentDetails.amount;
-//             paymentEntry.payment_method = paymentDetails.method;
-//             await paymentEntry.save();
-//         }
-
-//         const orderEntry = await Order.findOne({ orderId: razorpay_order_id });
-
-//         if (!orderEntry) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "Order not found"
-//             });
-//         }
-
-//         const paidAmount = paymentDetails.amount / 100;
-
-//         if (paidAmount !== orderEntry.totalAmount) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "Amount mismatch"
-//             });
-//         }
-
-//         const alreadyPaid = orderEntry.statusHistory?.some(
-//             (entry) => entry.status === "paid"
-//         );
-
-//         // Only decrement stock once per successful payment
-//         if (!alreadyPaid) {
-//             for (const item of orderEntry.items) {
-//                 const product = await Product.findById(item.product);
-//                 if (!product) {
-//                     return res.status(404).json({
-//                         success: false,
-//                         message: `Product not found: ${item.product}`
-//                     });
-//                 }
-
-//                 if (product.stock < item.quantity) {
-//                     return res.status(400).json({
-//                         success: false,
-//                         message: `Insufficient stock for ${product.name}`
-//                     });
-//                 }
-
-//                 product.stock -= item.quantity;
-//                 await product.save();
-//             }
-
-//             orderEntry.statusHistory.push({
-//                 status: "paid",
-//                 timestamp: new Date(),
-//                 updatedBy: "system"
-//             });
-//         }
-
-//         orderEntry.paymentStatus = "paid";
-//         orderEntry.orderStatus = "packed";
-//         await orderEntry.save();
-
-//         return res.json({
-//             success: true,
-//             message: "Payment verified successfully",
-//             orderId: orderEntry._id
-//         });
-
-//     } catch (error) {
-//         console.error("Verification Error:", error);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal Server Error"
-//         });
-//     }
-// };
 
 const verifyPayment = async (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
@@ -207,7 +97,15 @@ const verifyPayment = async (req, res) => {
             });
         }
 
-        // 7️⃣ Reduce Stock
+        // 🔥 7️⃣ Prevent duplicate stock deduction (IMPORTANT)
+        if (orderEntry.stockDeducted) {
+            return res.json({
+                success: true,
+                message: "Stock already deducted"
+            });
+        }
+
+        // 🔥 8️⃣ Reduce Stock + Create Logs
         for (const item of orderEntry.items) {
 
             const product = await Product.findById(item.product);
@@ -226,11 +124,25 @@ const verifyPayment = async (req, res) => {
                 });
             }
 
+            // ✅ Reduce stock
             product.stock -= item.quantity;
             await product.save();
+
+            // 🔥 Create inventory log
+            await InventoryLog.create({
+                product: product._id,
+                type: "OUT",
+                quantity: item.quantity,
+                reason: "SALE",
+                note: `Order ID: ${orderEntry._id}`,
+                createdBy: "system",
+            });
         }
 
-        // 8️⃣ Update Order
+        // ✅ Mark stock as deducted AFTER loop
+        orderEntry.stockDeducted = true;
+
+        // 9️⃣ Update Order
         orderEntry.paymentStatus = "paid";
         orderEntry.orderStatus = "packed";
 
@@ -242,7 +154,7 @@ const verifyPayment = async (req, res) => {
 
         await orderEntry.save();
 
-        // 9️⃣ Update Payment Record
+        // 🔟 Update Payment Record
         paymentEntry.status = "paid";
         paymentEntry.payment_id = razorpay_payment_id;
         paymentEntry.signature = razorpay_signature;
