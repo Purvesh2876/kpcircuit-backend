@@ -5,112 +5,65 @@ const fs = require('fs');
 const path = require('path');
 const subcategoryModel = require('../models/subcategoryModel');
 
-// Create a new product
+const { generateSKU } = require("../utils/skuGenerator");
+const InventoryLog = require('../models/inventoryLogModel');
+
 // exports.createProduct = async (req, res) => {
 //     try {
-//         const { name, category, description, variants, tags, featured } = req.body;
-//         console.log('get data from frontend', name, category, description, variants, featured);
-//         // Check if the category exists
-//         const categoryExists = await Category.findById(category);
-//         if (!categoryExists) {
-//             return res.status(404).json({ message: 'Category not found' });
-//         }
-
-//         const directoryPath = path.join(__dirname, '../category', name);
-//         if (!fs.existsSync(directoryPath)) {
-//             fs.mkdirSync(directoryPath, { recursive: true });
-//         }
-
-//         // const { category } = req.body;
-//         // if (!category || !mongoose.Types.ObjectId.isValid(category)) {
-//         //     return res.status(400).json({ message: 'Invalid Category ID' });
-//         // }
-
-
-//         // Map the uploaded files to their paths
-//         // const imagesPath = req.files.map(file => `/products/${name}/${file.filename}`); // Use the same structure as in category
-//         let parsedTags;
-//         try {
-//             parsedTags = JSON.parse(tags); // Parse the tags if they are sent as a JSON string
-//             if (!Array.isArray(parsedTags)) {
-//                 throw new Error('Tags must be an array');
-//             }
-//         } catch (error) {
-//             return res.status(400).json({ message: `Invalid tags format: ${error.message}` });
-//         }
-
-//         let imagesPath = [];
-//         if (req.files && req.files.length > 0) {
-//             imagesPath = req.files.map(file => `/products/${name}/${file.filename}`);
-//         }
-
-//         // Create the new product with images
-//         const newProduct = new Product({
+//         const {
 //             name,
 //             category,
+//             subCategory,
 //             description,
-//             tags: parsedTags,
-//             images: imagesPath, // Save the image paths
-//             variants: JSON.parse(variants), // Assuming variants are sent as a JSON string
-//             featured: featured === 'true' // Convert to boolean
+//             manufacturer,
+//             price,
+//             stock,
+//             featured,
+//         } = req.body;
+//         console.log('get data from frontend', name, category, description, manufacturer, price, stock, featured, subCategory);
+//         // 🔥 Create initial stock log
+//         if (stock && Number(stock) > 0) {
+//             await InventoryLog.create({
+//                 product: product._id,
+//                 type: "IN",
+//                 quantity: Number(stock),
+//                 reason: "INITIAL",
+//                 note: "Initial stock added during product creation",
+//                 createdBy: req.user?.email || "admin",
+//             });
+//         }
+
+//         const cat = await Category.findById(category);
+//         const sub = await subcategoryModel.findById(subCategory);
+
+//         if (!cat || !sub) {
+//             return res.status(400).json({ message: "Invalid category or subcategory" });
+//         }
+
+//         const sku = await generateSKU(cat.name, sub.name);
+
+//         const imagesPath = req.files
+//             ? req.files.map(file => `/products/${name}/${file.filename}`)
+//             : [];
+
+//         const product = await Product.create({
+//             name,
+//             sku,
+//             category,
+//             subCategory,
+//             description,
+//             manufacturer,
+//             price,
+//             stock,
+//             images: imagesPath,
+//             featured,
 //         });
 
-//         console.log('newProduct', newProduct);
-
-//         await newProduct.save();
-//         res.status(201).json(newProduct);
+//         res.status(201).json(product);
 //     } catch (error) {
-//         console.error(error);
 //         res.status(400).json({ message: error.message });
 //     }
 // };
-
-const { generateSKU } = require("../utils/skuGenerator");
-
-exports.createProduct = async (req, res) => {
-    try {
-        const {
-            name,
-            category,
-            subCategory,
-            description,
-            manufacturer,
-            price,
-            stock,
-            featured,
-        } = req.body;
-
-        const cat = await Category.findById(category);
-        const sub = await subcategoryModel.findById(subCategory);
-
-        if (!cat || !sub) {
-            return res.status(400).json({ message: "Invalid category or subcategory" });
-        }
-
-        const sku = await generateSKU(cat.name, sub.name);
-
-        const imagesPath = req.files
-            ? req.files.map(file => `/products/${name}/${file.filename}`)
-            : [];
-
-        const product = await Product.create({
-            name,
-            sku,
-            category,
-            subCategory,
-            description,
-            manufacturer,
-            price,
-            stock,
-            images: imagesPath,
-            featured,
-        });
-
-        res.status(201).json(product);
-    } catch (error) {
-        res.status(400).json({ message: error.message });
-    }
-};
 
 // exports.getAllProducts = async (req, res) => {
 //     try {
@@ -170,6 +123,67 @@ exports.createProduct = async (req, res) => {
 //         res.status(500).json({ message: error.message });
 //     }
 // };
+
+exports.createProduct = async (req, res) => {
+    try {
+        const {
+            name,
+            category,
+            subCategory,
+            description,
+            manufacturer,
+            price,
+            stock,
+            featured,
+        } = req.body;
+
+        console.log('get data from frontend', name, category, description, manufacturer, price, stock, featured, subCategory);
+
+        const cat = await Category.findById(category);
+        const sub = await subcategoryModel.findById(subCategory);
+
+        if (!cat || !sub) {
+            return res.status(400).json({ message: "Invalid category or subcategory" });
+        }
+
+        const sku = await generateSKU(cat.name, sub.name);
+
+        const imagesPath = req.files
+            ? req.files.map(file => `/products/${name}/${file.filename}`)
+            : [];
+
+        // ✅ STEP 1: Create product first
+        const product = await Product.create({
+            name,
+            sku,
+            category,
+            subCategory,
+            description,
+            manufacturer,
+            price,
+            stock,
+            images: imagesPath,
+            featured,
+        });
+
+        // ✅ STEP 2: Then create inventory log
+        if (stock && Number(stock) > 0) {
+            await InventoryLog.create({
+                product: product._id,
+                type: "IN",
+                quantity: Number(stock),
+                reason: "INITIAL",
+                note: "Initial stock added during product creation",
+                createdBy: req.user?.email || "admin",
+            });
+        }
+
+        res.status(201).json(product);
+
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
 
 exports.getAllProducts = async (req, res) => {
     try {
