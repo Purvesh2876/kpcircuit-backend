@@ -296,7 +296,19 @@ exports.getProductById = async (req, res) => {
 
 exports.updateProduct = async (req, res) => {
     try {
-        const { name, category, description, tags, variants, existingImages, removedImages, featured, subCategory, manufacturer, price, stock } = req.body;
+        const {
+            name,
+            category,
+            description,
+            tags,
+            variants,
+            existingImages,
+            removedImages,
+            featured,
+            subCategory,
+            manufacturer,
+            price
+        } = req.body; // ❌ stock removed
 
         // Check if the category exists
         if (category) {
@@ -312,21 +324,19 @@ exports.updateProduct = async (req, res) => {
         const parsedExistingImages = typeof existingImages === 'string' ? JSON.parse(existingImages) : existingImages;
         const parsedRemovedImages = typeof removedImages === 'string' ? JSON.parse(removedImages) : removedImages;
 
-        // Prepare the update data
+        // ✅ stock removed from updateData
         const updateData = {
             name,
             category,
             subCategory,
             manufacturer,
             price,
-            stock,
             description,
             tags: parsedTags,
             variants: parsedVariants,
             featured: featured === 'true',
         };
 
-        // Retrieve existing product images
         const existingProduct = await Product.findById(req.params.id);
         if (!existingProduct) return res.status(404).json({ message: 'Product not found' });
 
@@ -334,17 +344,13 @@ exports.updateProduct = async (req, res) => {
         if (parsedRemovedImages && parsedRemovedImages.length > 0) {
             updateData.images = existingProduct.images.filter(image => !parsedRemovedImages.includes(image));
 
-            // Delete removed images from the backend folder
             parsedRemovedImages.forEach((image) => {
-                const imagePath = path.join(__dirname, '../uploads', image); // Update this path
-                console.log(`Checking image: ${imagePath}`);
+                const imagePath = path.join(__dirname, '../uploads', image);
                 fs.access(imagePath, fs.constants.F_OK, (err) => {
                     if (!err) {
                         fs.unlink(imagePath, (unlinkErr) => {
                             if (unlinkErr) console.error(`Error deleting image: ${unlinkErr.message}`);
                         });
-                    } else {
-                        console.error(`Image not found: ${imagePath}`);
                     }
                 });
             });
@@ -358,10 +364,14 @@ exports.updateProduct = async (req, res) => {
             updateData.images = [...updateData.images, ...newImagesPath];
         }
 
-        // Update the product in the database
-        const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+        const updatedProduct = await Product.findByIdAndUpdate(
+            req.params.id,
+            updateData,
+            { new: true, runValidators: true }
+        );
 
         res.status(200).json(updatedProduct);
+
     } catch (error) {
         console.error(error);
         res.status(400).json({ message: error.message });
