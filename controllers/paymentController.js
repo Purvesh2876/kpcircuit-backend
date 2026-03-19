@@ -32,14 +32,12 @@ const verifyPayment = async (req, res) => {
     const secret = process.env.RAZORPAY_KEY_SECRET;
 
     try {
-
         // 1️⃣ Verify Razorpay Signature
         const generated_signature = crypto.createHmac("sha256", secret)
             .update(razorpay_order_id + "|" + razorpay_payment_id)
             .digest("hex");
 
         if (generated_signature !== razorpay_signature) {
-
             await Payment.findOneAndUpdate(
                 { order_id: razorpay_order_id },
                 { status: "failed" }
@@ -97,7 +95,7 @@ const verifyPayment = async (req, res) => {
             });
         }
 
-        // 🔥 7️⃣ Prevent duplicate stock deduction (IMPORTANT)
+        // 🔥 7️⃣ Prevent duplicate stock deduction
         if (orderEntry.stockDeducted) {
             return res.json({
                 success: true,
@@ -105,63 +103,87 @@ const verifyPayment = async (req, res) => {
             });
         }
 
-        // 🔥 8️⃣ Reduce Stock + Create Logs
-        for (const item of orderEntry.items) {
+        // ==============================
+        // 🔥 TRANSACTION STARTS HERE
+        // ==============================
 
-            const product = await Product.findById(item.product);
+        const mongoose = require("mongoose");
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-            if (!product) {
-                return res.status(404).json({
-                    success: false,
-                    message: `Product not found: ${item.product}`
-                });
+        try {
+            // 🔁 Loop through items
+            for (const item of orderEntry.items) {
+
+                // Try atomic update
+                const updatedProduct = await Product.findOneAndUpdate(
+                    { _id: item.product, stock: { $gte: item.quantity } },
+                    { $inc: { stock: -item.quantity } },
+                    { new: true, session }
+                );
+
+                if (!updatedProduct) {
+
+                    // 🔥 Fetch product name ONLY for error message
+                    const product = await Product.findById(item.product).select("name");
+
+                    throw new Error(
+                        `${product?.name || "Product"} is out of stock. Please remove it from cart.`
+                    );
+                }
+
+                // Create log
+                await InventoryLog.create([{
+                    product: item.product,
+                    type: "OUT",
+                    quantity: item.quantity,
+                    reason: "SALE",
+                    note: `Order ID: ${orderEntry._id}`,
+                    createdBy: "system",
+                }], { session });
             }
 
-            if (product.stock < item.quantity) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Insufficient stock for ${product.name}`
-                });
-            }
+            // ✅ Mark stock deducted
+            await Order.findByIdAndUpdate(
+                orderEntry._id,
+                { stockDeducted: true },
+                { session }
+            );
 
-            // ✅ Reduce stock
-            product.stock -= item.quantity;
-            await product.save();
+            // ✅ Update order status
+            orderEntry.paymentStatus = "paid";
+            orderEntry.orderStatus = "packed";
 
-            // 🔥 Create inventory log
-            await InventoryLog.create({
-                product: product._id,
-                type: "OUT",
-                quantity: item.quantity,
-                reason: "SALE",
-                note: `Order ID: ${orderEntry._id}`,
-                createdBy: "system",
+            orderEntry.statusHistory.push({
+                status: "paid",
+                timestamp: new Date(),
+                updatedBy: "system"
             });
+
+            await orderEntry.save({ session });
+
+            // ✅ Update payment entry
+            paymentEntry.status = "paid";
+            paymentEntry.payment_id = razorpay_payment_id;
+            paymentEntry.signature = razorpay_signature;
+            paymentEntry.amount_paid = paymentDetails.amount;
+            paymentEntry.payment_method = paymentDetails.method;
+
+            await paymentEntry.save({ session });
+
+            // ✅ Commit transaction
+            await session.commitTransaction();
+            session.endSession();
+
+        } catch (error) {
+            await session.abortTransaction();
+            session.endSession();
+            throw error;
         }
 
-        // ✅ Mark stock as deducted AFTER loop
-        orderEntry.stockDeducted = true;
-
-        // 9️⃣ Update Order
-        orderEntry.paymentStatus = "paid";
-        orderEntry.orderStatus = "packed";
-
-        orderEntry.statusHistory.push({
-            status: "paid",
-            timestamp: new Date(),
-            updatedBy: "system"
-        });
-
-        await orderEntry.save();
-
-        // 🔟 Update Payment Record
-        paymentEntry.status = "paid";
-        paymentEntry.payment_id = razorpay_payment_id;
-        paymentEntry.signature = razorpay_signature;
-        paymentEntry.amount_paid = paymentDetails.amount;
-        paymentEntry.payment_method = paymentDetails.method;
-
-        await paymentEntry.save();
+        // ==============================
+        // 🔥 TRANSACTION ENDS HERE
+        // ==============================
 
         return res.json({
             success: true,
@@ -170,17 +192,14 @@ const verifyPayment = async (req, res) => {
         });
 
     } catch (error) {
-
         console.error("Verification Error:", error);
 
-        return res.status(500).json({
+        return res.status(400).json({
             success: false,
-            message: "Internal Server Error"
+            message: error.message || "Something went wrong"
         });
-
     }
 };
-
 
 module.exports = {
     savePayment,

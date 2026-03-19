@@ -8,7 +8,8 @@ const {
     updateProduct,
     deleteProduct,
     searchProducts,
-    addStock
+    addStock,
+    getInventoryLogs
 } = require('../controllers/productController');
 
 const router = express.Router();
@@ -18,6 +19,9 @@ router.post('/', upload.array('images'), createProduct); // Use upload.array('im
 
 // add stock to a product
 router.post("/:id/add-stock", addStock);
+
+// Get inventory logs for a product
+router.get("/:id/inventory", getInventoryLogs);
 
 // Get all products
 router.get('/', getAllProducts);

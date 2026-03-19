@@ -4,6 +4,7 @@ const Product = require('../models/productModel');
 const fs = require('fs');
 const path = require('path');
 const subcategoryModel = require('../models/subcategoryModel');
+const mongoose = require("mongoose");
 
 const { generateSKU } = require("../utils/skuGenerator");
 const InventoryLog = require('../models/inventoryLogModel');
@@ -185,7 +186,42 @@ exports.createProduct = async (req, res) => {
     }
 };
 
+exports.getInventoryLogs = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { page = 1, limit = 10 } = req.query;
+
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const logs = await InventoryLog.find({ product: id })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(Number(limit));
+
+        const total = await InventoryLog.countDocuments({ product: id });
+
+        res.status(200).json({
+            success: true,
+            page: Number(page),
+            totalPages: Math.ceil(total / limit),
+            totalLogs: total,
+            logs
+        });
+
+    } catch (error) {
+        console.error("Inventory Logs Error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch inventory logs"
+        });
+    }
+};
+
 exports.addStock = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { quantity, note } = req.body;
 
@@ -193,34 +229,45 @@ exports.addStock = async (req, res) => {
             return res.status(400).json({ message: "Invalid quantity" });
         }
 
-        const product = await Product.findById(req.params.id);
+        // ✅ Update stock atomically
+        const updatedProduct = await Product.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { stock: Number(quantity) } },
+            { new: true, session }
+        );
 
-        if (!product) {
-            return res.status(404).json({ message: "Product not found" });
+        if (!updatedProduct) {
+            throw new Error("Product not found");
         }
 
-        // ✅ Update stock
-        product.stock += Number(quantity);
-        await product.save();
-
         // ✅ Create inventory log
-        await InventoryLog.create({
-            product: product._id,
+        await InventoryLog.create([{
+            product: updatedProduct._id,
             type: "IN",
             quantity: Number(quantity),
             reason: "PURCHASE",
             note: note || "Stock added manually",
             createdBy: req.user?.email || "admin",
-        });
+        }], { session });
+
+        // ✅ Commit transaction
+        await session.commitTransaction();
+        session.endSession();
 
         res.status(200).json({
             message: "Stock added successfully",
-            stock: product.stock,
+            stock: updatedProduct.stock,
         });
 
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+
         console.error(error);
-        res.status(500).json({ message: "Server error" });
+
+        res.status(400).json({
+            message: error.message || "Server error"
+        });
     }
 };
 
