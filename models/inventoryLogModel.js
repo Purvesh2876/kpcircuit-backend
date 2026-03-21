@@ -23,7 +23,7 @@ const inventoryLogSchema = new mongoose.Schema(
 
     reason: {
       type: String,
-      enum: ["INITIAL", "PURCHASE", "SALE", "RETURN", "ADJUSTMENT"],
+      enum: ["INITIAL", "PURCHASE", "SALE", "RETURN", "ADJUSTMENT", "REPLACEMENT"],
       required: true,
     },
 

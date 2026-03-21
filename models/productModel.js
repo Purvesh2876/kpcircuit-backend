@@ -47,10 +47,6 @@ const productSchema = new mongoose.Schema(
             type: [String],
             required: true,
         },
-        isActive: {
-            type: Boolean,
-            default: true,
-        },
 
         sku: {
             type: String,
@@ -61,6 +57,21 @@ const productSchema = new mongoose.Schema(
         featured: {
             type: Boolean,
             default: false,
+        },
+
+        isReturnable: {
+            type: Boolean,
+            default: true,
+        },
+
+        isReplaceable: {
+            type: Boolean,
+            default: true,
+        },
+
+        returnWindowDays: {
+            type: Number,
+            default: 7,
         },
 
         isActive: {

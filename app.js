@@ -9,6 +9,7 @@ const cartRoutes = require('./routes/cartRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const wishlistRoutes = require('./routes/wishlistRoutes');
 const subcategoryRoutes = require('./routes/subcategoryRoutes');
+const returnRoutes = require('./routes/returnRoutes');
 const upload = require('./config/multerConfig'); // Path to your multer config
 const path = require('path');
 const cookieParser = require('cookie-parser');
@@ -42,6 +43,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/order', orderRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/subcategory', subcategoryRoutes);
+app.use('/api/returns', returnRoutes);
 
 // Connect to MongoDB
 mongoose.connect(process.env.DB_URI, {

@@ -1,15 +1,15 @@
 const express = require('express');
 const { signup, login, activateUser, updateUserRole, getSingleUser, logout, registerOrLogin, adminLogin, getAllUsers, updateUser, getDashboardStats } = require('../controllers/authController');
-const { isAuthenticated } = require('../middlewares/authMiddleware');
+const { isAuthenticated, authorizeRoles } = require('../middlewares/authMiddleware');
 const router = express.Router();
 
 // Signup route
 router.post('/signup', signup);
 
-// Update User Route
-router.put('/updateUserRole', updateUserRole);
+// Update User Role Route
+router.put('/updateUserRole', isAuthenticated, authorizeRoles('admin'), updateUserRole);
 
-// Actite User route
+// Activate User route
 router.post('/activate', activateUser);
 
 // Login route
@@ -28,12 +28,12 @@ router.post('/getSingleUser', isAuthenticated, getSingleUser);
 router.post('/registerOrLogin', registerOrLogin);
 
 // getAllUser's API
-router.get('/getAllUsers', getAllUsers);
+router.get('/getAllUsers', isAuthenticated, authorizeRoles('admin'), getAllUsers);
 
 // UPDATE API
-router.put('/updateUser/:id', updateUser);
+router.put('/updateUser/:id', isAuthenticated, authorizeRoles('admin'), updateUser);
 
-// getAllUser's API
-router.get('/getDashboardStats', getDashboardStats);
+// getDashboardStats API
+router.get('/getDashboardStats', isAuthenticated, authorizeRoles('admin'), getDashboardStats);
 
 module.exports = router;

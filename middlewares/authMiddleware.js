@@ -3,7 +3,6 @@ const User = require('../models/userModel'); // Assuming you have the User model
 
 // Middleware to verify if the user is authenticated
 exports.isAuthenticated = async (req, res, next) => {
-
   let token = req.cookies.token; // Adjust this based on how you name your cookie
 
   // If no token is found, return an error response
@@ -13,7 +12,11 @@ exports.isAuthenticated = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { _id: decoded.id }; // Set the user ID on the request object
+    req.user = await User.findById(decoded.id);
+
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
 
     next();
   } catch (error) {
@@ -24,9 +27,13 @@ exports.isAuthenticated = async (req, res, next) => {
 // Middleware to authorize roles
 exports.authorizeRoles = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    // Check if user has any of the required roles (handling array of roles)
+    const userRoles = Array.isArray(req.user.role) ? req.user.role : [req.user.role];
+    const hasRole = userRoles.some(role => roles.includes(role));
+
+    if (!hasRole) {
       return res.status(403).json({
-        message: `Role (${req.user.role}) is not authorized to access this resource`
+        message: `Role (${userRoles.join(', ')}) is not authorized to access this resource`
       });
     }
     next();

@@ -361,7 +361,7 @@ exports.adminLogin = async (req, res) => {
                 httpOnly: true,
                 sameSite: 'Strict',
                 maxAge: process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
-            }).json({ success: true, data: 'Login successful', token });
+            }).json({ success: true, data: 'Login successful', token, user: { name: user.name, email: user.email } });
         }
 
         // Check if the user is verified
@@ -398,7 +398,7 @@ exports.adminLogin = async (req, res) => {
                 secure: true,
                 sameSite: 'lax',
                 maxAge: process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
-            }).json({ success: true, data: 'Login successful', token });
+            }).json({ success: true, data: 'Login successful', token, user: { name: user.name, email: user.email } });
         }
         // If password does not match, increment login attempts
         user.loginAttempts += 1;

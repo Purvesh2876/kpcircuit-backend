@@ -8,13 +8,12 @@ const {
     deleteCategory,
     getCategoryById
 } = require('../controllers/categoryController');
-const { isAuthenticated } = require('../middlewares/authMiddleware');
+const { isAuthenticated, authorizeRoles } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
 // Create a new category with image upload
-// router.post('/', upload.array('image'), isAuthenticated, createCategory); // Make sure to use upload.array('image')
-router.post('/', upload.single('image'), isAuthenticated, createCategory); // Make sure to use upload.array('image')
+router.post('/', isAuthenticated, authorizeRoles('admin'), upload.single('image'), createCategory); 
 
 // Get all categories
 router.get('/', getAllCategories);
@@ -23,9 +22,9 @@ router.get('/', getAllCategories);
 // router.get('/:id', getCategoryById);
 
 // Update a category by ID
-router.put('/:id', upload.single('image'), updateCategory); // Ensure to use upload.array('image')
+router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.single('image'), updateCategory); 
 
 // Delete a category by ID
-router.delete('/:id', deleteCategory);
+router.delete('/:id', isAuthenticated, authorizeRoles('admin'), deleteCategory);
 
 module.exports = router;
