@@ -13,8 +13,25 @@ const returnRoutes = require('./routes/returnRoutes');
 const upload = require('./config/multerConfig'); // Path to your multer config
 const path = require('path');
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// Secure backend with Helmet (allowing cross-origin images for frontend)
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+}));
+
+// Rate Limiting to prevent brute-force attacks
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // Limit each IP to 500 requests per 15 minutes
+  message: {
+    message: "Too many requests from this IP, please try again after 15 minutes"
+  }
+});
+app.use(limiter);
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
