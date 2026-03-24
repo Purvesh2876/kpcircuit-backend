@@ -41,7 +41,8 @@ app.use(cors({
     'http://localhost:3001',
     'http://76.13.247.39',
     'http://76.13.247.39:3000',
-    'http://76.13.247.39:3001'
+    'http://76.13.247.39:3001',
+    'https://kpcircuitcity.com'
   ],
   credentials: true,
 }));

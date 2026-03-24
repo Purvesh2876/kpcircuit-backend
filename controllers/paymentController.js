@@ -1,9 +1,8 @@
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-const Payment = require('../models/paymentModel'); // Check your file path
-const Order = require('../models/orderModel'); // Check your file path (might be orderModel)
-const Product = require('../models/productModel');
-const { runInTransaction } = require('../utils/transactionHelper');
+const Payment = require('../models/paymentModel');
+const Order = require('../models/orderModel');
+const { finalizeOrder } = require('../utils/orderService');
 
 // Function to save payment details
 const savePayment = async (req, res) => {
@@ -49,135 +48,26 @@ const verifyPayment = async (req, res) => {
             });
         }
 
-        // 2️⃣ Fetch Razorpay Payment Details
-        const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET,
-        });
+        // 🚀 2️⃣ FINALIZING ORDER (WORLD-CLASS)
+        // This handles stock, status, and logs safely via centralized service.
+        // It's idempotent, so if the webhook also tries to run this, it won't double-deduct.
+        const order = await finalizeOrder(
+            razorpay_order_id, 
+            razorpay_payment_id, 
+            "user"
+        );
 
-        const paymentDetails = await razorpay.payments.fetch(razorpay_payment_id);
-
-        // 3️⃣ Find Payment Entry
-        const paymentEntry = await Payment.findOne({ order_id: razorpay_order_id });
-
-        if (!paymentEntry) {
-            return res.status(404).json({
-                success: false,
-                message: "Payment record not found"
-            });
-        }
-
-        // 4️⃣ Find Order Entry
-        const orderEntry = await Order.findOne({ orderId: razorpay_order_id });
-
-        if (!orderEntry) {
-            return res.status(404).json({
-                success: false,
-                message: "Order not found"
-            });
-        }
-
-        // 5️⃣ Prevent Duplicate Verification
-        if (orderEntry.paymentStatus === "paid") {
-            return res.json({
-                success: true,
-                message: "Payment already verified"
-            });
-        }
-
-        // 6️⃣ Verify Amount
-        const paidAmount = paymentDetails.amount / 100;
-
-        if (paidAmount !== orderEntry.totalAmount) {
-            return res.status(400).json({
-                success: false,
-                message: "Amount mismatch"
-            });
-        }
-
-        // 🔥 7️⃣ Prevent duplicate stock deduction
-        if (orderEntry.stockDeducted) {
-            return res.json({
-                success: true,
-                message: "Stock already deducted"
-            });
-        }
-
-        // ==============================
-        // 🔥 ATOMIC OPERATIONS START
-        // ==============================
-        await runInTransaction(async (session) => {
-            // 🔁 Loop through items
-            for (const item of orderEntry.items) {
-                // Try atomic update
-                const updatedProduct = await Product.findOneAndUpdate(
-                    { _id: item.product, stock: { $gte: item.quantity } },
-                    { $inc: { stock: -item.quantity } },
-                    { new: true, session }
-                );
-
-                if (!updatedProduct) {
-                    const product = await Product.findById(item.product).select("name");
-                    throw new Error(
-                        `${product?.name || "Product"} is out of stock. Please remove it from cart.`
-                    );
-                }
-
-                // Create log
-                await InventoryLog.create([{
-                    product: item.product,
-                    type: "OUT",
-                    quantity: item.quantity,
-                    reason: "SALE",
-                    note: `Order ID: ${orderEntry._id}`,
-                    createdBy: "system",
-                }], { session });
-            }
-
-            // ✅ Mark stock deducted
-            await Order.findByIdAndUpdate(
-                orderEntry._id,
-                { stockDeducted: true },
-                { session }
-            );
-
-            // ✅ Update order status
-            orderEntry.paymentStatus = "paid";
-            orderEntry.orderStatus = "packed";
-
-            orderEntry.statusHistory.push({
-                status: "paid",
-                timestamp: new Date(),
-                updatedBy: "system"
-            });
-
-            await orderEntry.save({ session });
-
-            // ✅ Update payment entry
-            paymentEntry.status = "paid";
-            paymentEntry.payment_id = razorpay_payment_id;
-            paymentEntry.signature = razorpay_signature;
-            paymentEntry.amount_paid = paymentDetails.amount;
-            paymentEntry.payment_method = paymentDetails.method;
-
-            await paymentEntry.save({ session });
-        });
-        // ==============================
-        // 🔥 ATOMIC OPERATIONS END
-        // ==============================
-
-        return res.json({
+        res.status(200).json({
             success: true,
-            message: "Payment verified successfully",
-            orderId: orderEntry._id
+            message: "Payment verified and order finalized successfully",
+            order,
         });
 
     } catch (error) {
         console.error("Verification Error:", error);
-
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
-            message: error.message || "Something went wrong"
+            message: error.message || "Payment verification failed",
         });
     }
 };

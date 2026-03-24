@@ -1,13 +1,11 @@
 const crypto = require("crypto");
-const Order = require("../models/orderModel");
-const Payment = require("../models/paymentModel");
+const { finalizeOrder } = require("../utils/orderService");
 
 exports.razorpayWebhook = async (req, res) => {
-
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-
     const signature = req.headers["x-razorpay-signature"];
 
+    // 1️⃣ Verify Webhook Signature
     const generatedSignature = crypto
         .createHmac("sha256", secret)
         .update(JSON.stringify(req.body))
@@ -20,50 +18,20 @@ exports.razorpayWebhook = async (req, res) => {
     const event = req.body.event;
 
     try {
-
+        // 2️⃣ Handle Payment Captured Event
         if (event === "payment.captured") {
-
             const payment = req.body.payload.payment.entity;
-
             const orderId = payment.order_id;
 
-            const order = await Order.findOne({ orderId });
-
-            if (!order) return res.status(404).json({ message: "Order not found" });
-
-            if (order.paymentStatus === "paid") {
-                return res.json({ message: "Already processed" });
-            }
-
-            order.paymentStatus = "paid";
-            order.orderStatus = "packed";
-
-            order.statusHistory.push({
-                status: "paid",
-                timestamp: new Date(),
-                updatedBy: "webhook"
-            });
-
-            await order.save();
-
-            await Payment.findOneAndUpdate(
-                { order_id: orderId },
-                {
-                    status: "paid",
-                    payment_id: payment.id,
-                    amount_paid: payment.amount,
-                    payment_method: payment.method
-                }
-            );
+            // 🚀 FINALIZING ORDER (WORLD-CLASS FALLBACK)
+            // Even if the user closes their browser, the webhook will ensure
+            // stock is deducted and payment is recorded safely via orderService.
+            await finalizeOrder(orderId, payment.id, "webhook");
         }
 
         res.json({ status: "ok" });
-
     } catch (error) {
-
         console.error("Webhook Error:", error);
-
-        res.status(500).json({ error: "Webhook processing failed" });
-
+        res.status(500).json({ status: "error", message: error.message });
     }
 };

@@ -69,15 +69,15 @@ const orderSchema = new mongoose.Schema(
       default: "placed",
     },
     isReplacement: {
-        type: Boolean,
-        default: false,
+      type: Boolean,
+      default: false,
     },
     originalOrder: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Order",
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
     },
   },
-  { 
+  {
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true }
@@ -85,10 +85,10 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.virtual('returnRequest', {
-    ref: 'ReturnRequest',
-    localField: '_id',
-    foreignField: 'order',
-    justOne: true
+  ref: 'ReturnRequest',
+  localField: '_id',
+  foreignField: 'order',
+  justOne: true
 });
 
 
