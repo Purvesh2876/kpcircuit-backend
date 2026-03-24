@@ -308,7 +308,8 @@ exports.myOrders = async (req, res) => {
         }
 
         const orders = await Order.find(matchQuery)
-            .populate("items.product", "name images price")
+            .populate("items.product", "name images price isReturnable isReplaceable returnWindowDays")
+            .populate('returnRequest')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);

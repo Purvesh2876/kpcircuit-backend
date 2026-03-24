@@ -4,113 +4,67 @@ const Product = require('../models/productModel');
 const fs = require('fs');
 const path = require('path');
 const subcategoryModel = require('../models/subcategoryModel');
+const mongoose = require("mongoose");
 
-// Create a new product
+const { generateSKU } = require("../utils/skuGenerator");
+const InventoryLog = require('../models/inventoryLogModel');
+
 // exports.createProduct = async (req, res) => {
 //     try {
-//         const { name, category, description, variants, tags, featured } = req.body;
-//         console.log('get data from frontend', name, category, description, variants, featured);
-//         // Check if the category exists
-//         const categoryExists = await Category.findById(category);
-//         if (!categoryExists) {
-//             return res.status(404).json({ message: 'Category not found' });
-//         }
-
-//         const directoryPath = path.join(__dirname, '../category', name);
-//         if (!fs.existsSync(directoryPath)) {
-//             fs.mkdirSync(directoryPath, { recursive: true });
-//         }
-
-//         // const { category } = req.body;
-//         // if (!category || !mongoose.Types.ObjectId.isValid(category)) {
-//         //     return res.status(400).json({ message: 'Invalid Category ID' });
-//         // }
-
-
-//         // Map the uploaded files to their paths
-//         // const imagesPath = req.files.map(file => `/products/${name}/${file.filename}`); // Use the same structure as in category
-//         let parsedTags;
-//         try {
-//             parsedTags = JSON.parse(tags); // Parse the tags if they are sent as a JSON string
-//             if (!Array.isArray(parsedTags)) {
-//                 throw new Error('Tags must be an array');
-//             }
-//         } catch (error) {
-//             return res.status(400).json({ message: `Invalid tags format: ${error.message}` });
-//         }
-
-//         let imagesPath = [];
-//         if (req.files && req.files.length > 0) {
-//             imagesPath = req.files.map(file => `/products/${name}/${file.filename}`);
-//         }
-
-//         // Create the new product with images
-//         const newProduct = new Product({
+//         const {
 //             name,
 //             category,
+//             subCategory,
 //             description,
-//             tags: parsedTags,
-//             images: imagesPath, // Save the image paths
-//             variants: JSON.parse(variants), // Assuming variants are sent as a JSON string
-//             featured: featured === 'true' // Convert to boolean
+//             manufacturer,
+//             price,
+//             stock,
+//             featured,
+//         } = req.body;
+//         console.log('get data from frontend', name, category, description, manufacturer, price, stock, featured, subCategory);
+//         // 🔥 Create initial stock log
+//         if (stock && Number(stock) > 0) {
+//             await InventoryLog.create({
+//                 product: product._id,
+//                 type: "IN",
+//                 quantity: Number(stock),
+//                 reason: "INITIAL",
+//                 note: "Initial stock added during product creation",
+//                 createdBy: req.user?.email || "admin",
+//             });
+//         }
+
+//         const cat = await Category.findById(category);
+//         const sub = await subcategoryModel.findById(subCategory);
+
+//         if (!cat || !sub) {
+//             return res.status(400).json({ message: "Invalid category or subcategory" });
+//         }
+
+//         const sku = await generateSKU(cat.name, sub.name);
+
+//         const imagesPath = req.files
+//             ? req.files.map(file => `/products/${name}/${file.filename}`)
+//             : [];
+
+//         const product = await Product.create({
+//             name,
+//             sku,
+//             category,
+//             subCategory,
+//             description,
+//             manufacturer,
+//             price,
+//             stock,
+//             images: imagesPath,
+//             featured,
 //         });
 
-//         console.log('newProduct', newProduct);
-
-//         await newProduct.save();
-//         res.status(201).json(newProduct);
+//         res.status(201).json(product);
 //     } catch (error) {
-//         console.error(error);
 //         res.status(400).json({ message: error.message });
 //     }
 // };
-
-const { generateSKU } = require("../utils/skuGenerator");
-
-exports.createProduct = async (req, res) => {
-    try {
-        const {
-            name,
-            category,
-            subCategory,
-            description,
-            manufacturer,
-            price,
-            stock,
-            featured,
-        } = req.body;
-
-        const cat = await Category.findById(category);
-        const sub = await subcategoryModel.findById(subCategory);
-
-        if (!cat || !sub) {
-            return res.status(400).json({ message: "Invalid category or subcategory" });
-        }
-
-        const sku = await generateSKU(cat.name, sub.name);
-
-        const imagesPath = req.files
-            ? req.files.map(file => `/products/${name}/${file.filename}`)
-            : [];
-
-        const product = await Product.create({
-            name,
-            sku,
-            category,
-            subCategory,
-            description,
-            manufacturer,
-            price,
-            stock,
-            images: imagesPath,
-            featured,
-        });
-
-        res.status(201).json(product);
-    } catch (error) {
-        res.status(400).json({ message: error.message });
-    }
-};
 
 // exports.getAllProducts = async (req, res) => {
 //     try {
@@ -170,6 +124,152 @@ exports.createProduct = async (req, res) => {
 //         res.status(500).json({ message: error.message });
 //     }
 // };
+
+exports.createProduct = async (req, res) => {
+    try {
+        const {
+            name,
+            category,
+            subCategory,
+            description,
+            manufacturer,
+            price,
+            stock,
+            featured,
+        } = req.body;
+
+        console.log('get data from frontend', name, category, description, manufacturer, price, stock, featured, subCategory);
+
+        const cat = await Category.findById(category);
+        const sub = await subcategoryModel.findById(subCategory);
+
+        if (!cat || !sub) {
+            return res.status(400).json({ message: "Invalid category or subcategory" });
+        }
+
+        const sku = await generateSKU(cat.name, sub.name);
+
+        const imagesPath = req.files
+            ? req.files.map(file => `/products/${name}/${file.filename}`)
+            : [];
+
+        // ✅ STEP 1: Create product first
+        const product = await Product.create({
+            name,
+            sku,
+            category,
+            subCategory,
+            description,
+            manufacturer,
+            price,
+            stock,
+            images: imagesPath,
+            featured,
+        });
+
+        // ✅ STEP 2: Then create inventory log
+        if (stock && Number(stock) > 0) {
+            await InventoryLog.create({
+                product: product._id,
+                type: "IN",
+                quantity: Number(stock),
+                reason: "INITIAL",
+                note: "Initial stock added during product creation",
+                createdBy: req.user?.email || "admin",
+            });
+        }
+
+        res.status(201).json(product);
+
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+exports.getInventoryLogs = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { page = 1, limit = 10 } = req.query;
+
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const logs = await InventoryLog.find({ product: id })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(Number(limit));
+
+        const total = await InventoryLog.countDocuments({ product: id });
+
+        res.status(200).json({
+            success: true,
+            page: Number(page),
+            totalPages: Math.ceil(total / limit),
+            totalLogs: total,
+            logs
+        });
+
+    } catch (error) {
+        console.error("Inventory Logs Error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch inventory logs"
+        });
+    }
+};
+
+exports.addStock = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const { quantity, note } = req.body;
+
+        if (!quantity || Number(quantity) <= 0) {
+            return res.status(400).json({ message: "Invalid quantity" });
+        }
+
+        // ✅ Update stock atomically
+        const updatedProduct = await Product.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { stock: Number(quantity) } },
+            { new: true, session }
+        );
+
+        if (!updatedProduct) {
+            throw new Error("Product not found");
+        }
+
+        // ✅ Create inventory log
+        await InventoryLog.create([{
+            product: updatedProduct._id,
+            type: "IN",
+            quantity: Number(quantity),
+            reason: "PURCHASE",
+            note: note || "Stock added manually",
+            createdBy: req.user?.email || "admin",
+        }], { session });
+
+        // ✅ Commit transaction
+        await session.commitTransaction();
+        session.endSession();
+
+        res.status(200).json({
+            message: "Stock added successfully",
+            stock: updatedProduct.stock,
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+
+        console.error(error);
+
+        res.status(400).json({
+            message: error.message || "Server error"
+        });
+    }
+};
 
 exports.getAllProducts = async (req, res) => {
     try {
@@ -282,7 +382,19 @@ exports.getProductById = async (req, res) => {
 
 exports.updateProduct = async (req, res) => {
     try {
-        const { name, category, description, tags, variants, existingImages, removedImages, featured, subCategory, manufacturer, price, stock } = req.body;
+        const {
+            name,
+            category,
+            description,
+            tags,
+            variants,
+            existingImages,
+            removedImages,
+            featured,
+            subCategory,
+            manufacturer,
+            price
+        } = req.body; // ❌ stock removed
 
         // Check if the category exists
         if (category) {
@@ -298,21 +410,19 @@ exports.updateProduct = async (req, res) => {
         const parsedExistingImages = typeof existingImages === 'string' ? JSON.parse(existingImages) : existingImages;
         const parsedRemovedImages = typeof removedImages === 'string' ? JSON.parse(removedImages) : removedImages;
 
-        // Prepare the update data
+        // ✅ stock removed from updateData
         const updateData = {
             name,
             category,
             subCategory,
             manufacturer,
             price,
-            stock,
             description,
             tags: parsedTags,
             variants: parsedVariants,
             featured: featured === 'true',
         };
 
-        // Retrieve existing product images
         const existingProduct = await Product.findById(req.params.id);
         if (!existingProduct) return res.status(404).json({ message: 'Product not found' });
 
@@ -320,17 +430,13 @@ exports.updateProduct = async (req, res) => {
         if (parsedRemovedImages && parsedRemovedImages.length > 0) {
             updateData.images = existingProduct.images.filter(image => !parsedRemovedImages.includes(image));
 
-            // Delete removed images from the backend folder
             parsedRemovedImages.forEach((image) => {
-                const imagePath = path.join(__dirname, '../uploads', image); // Update this path
-                console.log(`Checking image: ${imagePath}`);
+                const imagePath = path.join(__dirname, '../uploads', image);
                 fs.access(imagePath, fs.constants.F_OK, (err) => {
                     if (!err) {
                         fs.unlink(imagePath, (unlinkErr) => {
                             if (unlinkErr) console.error(`Error deleting image: ${unlinkErr.message}`);
                         });
-                    } else {
-                        console.error(`Image not found: ${imagePath}`);
                     }
                 });
             });
@@ -344,10 +450,14 @@ exports.updateProduct = async (req, res) => {
             updateData.images = [...updateData.images, ...newImagesPath];
         }
 
-        // Update the product in the database
-        const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+        const updatedProduct = await Product.findByIdAndUpdate(
+            req.params.id,
+            updateData,
+            { new: true, runValidators: true }
+        );
 
         res.status(200).json(updatedProduct);
+
     } catch (error) {
         console.error(error);
         res.status(400).json({ message: error.message });

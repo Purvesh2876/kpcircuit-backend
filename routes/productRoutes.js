@@ -7,13 +7,23 @@ const {
     getProductById,
     updateProduct,
     deleteProduct,
-    searchProducts
+    searchProducts,
+    addStock,
+    getInventoryLogs
 } = require('../controllers/productController');
+
+const { isAuthenticated, authorizeRoles } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
 // Create a new product with image upload
-router.post('/', upload.array('images'), createProduct); // Use upload.array('images')
+router.post('/', isAuthenticated, authorizeRoles('admin'), upload.array('images'), createProduct);
+
+// add stock to a product
+router.post("/:id/add-stock", isAuthenticated, authorizeRoles('admin'), addStock);
+
+// Get inventory logs for a product
+router.get("/:id/inventory", isAuthenticated, authorizeRoles('admin'), getInventoryLogs);
 
 // Get all products
 router.get('/', getAllProducts);
@@ -24,9 +34,9 @@ router.get('/search', searchProducts);
 router.get('/:id', getProductById);
 
 // Update a product
-router.put('/:id', upload.array('images'), updateProduct); // Use upload.array('images')
+router.put('/:id', isAuthenticated, authorizeRoles('admin'), upload.array('images'), updateProduct);
 
 // Delete a product
-router.delete('/:id', deleteProduct);
+router.delete('/:id', isAuthenticated, authorizeRoles('admin'), deleteProduct);
 
 module.exports = router;

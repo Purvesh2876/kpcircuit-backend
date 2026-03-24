@@ -59,13 +59,37 @@ const orderSchema = new mongoose.Schema(
       enum: ["pending", "paid", "failed"],
       default: "pending",
     },
+    stockDeducted: {
+      type: Boolean,
+      default: false,
+    },
     orderStatus: {
       type: String,
-      enum: ["placed", "packed", "shipped", "delivered", "cancelled"],
+      enum: ["pending", "placed", "packed", "shipped", "delivered", "cancelled"],
       default: "placed",
     },
+    isReplacement: {
+        type: Boolean,
+        default: false,
+    },
+    originalOrder: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Order",
+    },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+  }
 );
+
+orderSchema.virtual('returnRequest', {
+    ref: 'ReturnRequest',
+    localField: '_id',
+    foreignField: 'order',
+    justOne: true
+});
+
 
 module.exports = mongoose.model("Order", orderSchema);
