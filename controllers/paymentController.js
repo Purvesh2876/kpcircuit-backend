@@ -3,9 +3,9 @@ const crypto = require('crypto');
 const Payment = require('../models/paymentModel'); // Check your file path
 const Order = require('../models/orderModel'); // Check your file path (might be orderModel)
 const Product = require('../models/productModel');
-InventoryLog = require('../models/inventoryLogModel'); // Check your file path
+const { runInTransaction } = require('../utils/transactionHelper');
 
-// Function to save payment details (Optional: If createOrder handles this, this might be unused, but keeping it to prevent router errors)
+// Function to save payment details
 const savePayment = async (req, res) => {
     const { orderId, paymentId, amount, currency, status } = req.body;
 
@@ -104,17 +104,11 @@ const verifyPayment = async (req, res) => {
         }
 
         // ==============================
-        // 🔥 TRANSACTION STARTS HERE
+        // 🔥 ATOMIC OPERATIONS START
         // ==============================
-
-        const mongoose = require("mongoose");
-        const session = await mongoose.startSession();
-        session.startTransaction();
-
-        try {
+        await runInTransaction(async (session) => {
             // 🔁 Loop through items
             for (const item of orderEntry.items) {
-
                 // Try atomic update
                 const updatedProduct = await Product.findOneAndUpdate(
                     { _id: item.product, stock: { $gte: item.quantity } },
@@ -123,10 +117,7 @@ const verifyPayment = async (req, res) => {
                 );
 
                 if (!updatedProduct) {
-
-                    // 🔥 Fetch product name ONLY for error message
                     const product = await Product.findById(item.product).select("name");
-
                     throw new Error(
                         `${product?.name || "Product"} is out of stock. Please remove it from cart.`
                     );
@@ -170,19 +161,9 @@ const verifyPayment = async (req, res) => {
             paymentEntry.payment_method = paymentDetails.method;
 
             await paymentEntry.save({ session });
-
-            // ✅ Commit transaction
-            await session.commitTransaction();
-            session.endSession();
-
-        } catch (error) {
-            await session.abortTransaction();
-            session.endSession();
-            throw error;
-        }
-
+        });
         // ==============================
-        // 🔥 TRANSACTION ENDS HERE
+        // 🔥 ATOMIC OPERATIONS END
         // ==============================
 
         return res.json({

@@ -64,6 +64,9 @@ exports.createReturnRequest = catchAsyncErrors(async (req, res, next) => {
             return next(new ErrorHander(`A return request for "${product.name}" already exists for this order.`, 400));
         }
     }
+    const images = req.files 
+        ? req.files.map(file => `/returns/${file.filename}`)
+        : [];
 
     const newReturnRequest = await ReturnRequest.create({
         order: orderId,
@@ -71,6 +74,7 @@ exports.createReturnRequest = catchAsyncErrors(async (req, res, next) => {
         items,
         type,
         reason,
+        images,
         status: 'REQUESTED',
         statusHistory: [{ status: 'REQUESTED', updatedBy: 'user' }]
     });

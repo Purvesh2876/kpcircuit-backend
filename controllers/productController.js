@@ -217,11 +217,9 @@ exports.getInventoryLogs = async (req, res) => {
         });
     }
 };
+const { runInTransaction } = require('../utils/transactionHelper');
 
 exports.addStock = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
         const { quantity, note } = req.body;
 
@@ -229,42 +227,38 @@ exports.addStock = async (req, res) => {
             return res.status(400).json({ message: "Invalid quantity" });
         }
 
-        // ✅ Update stock atomically
-        const updatedProduct = await Product.findByIdAndUpdate(
-            req.params.id,
-            { $inc: { stock: Number(quantity) } },
-            { new: true, session }
-        );
+        const result = await runInTransaction(async (session) => {
+            // ✅ Update stock atomically
+            const updatedProduct = await Product.findByIdAndUpdate(
+                req.params.id,
+                { $inc: { stock: Number(quantity) } },
+                { new: true, session }
+            );
 
-        if (!updatedProduct) {
-            throw new Error("Product not found");
-        }
+            if (!updatedProduct) {
+                throw new Error("Product not found");
+            }
 
-        // ✅ Create inventory log
-        await InventoryLog.create([{
-            product: updatedProduct._id,
-            type: "IN",
-            quantity: Number(quantity),
-            reason: "PURCHASE",
-            note: note || "Stock added manually",
-            createdBy: req.user?.email || "admin",
-        }], { session });
+            // ✅ Create inventory log
+            await InventoryLog.create([{
+                product: updatedProduct._id,
+                type: "IN",
+                quantity: Number(quantity),
+                reason: "PURCHASE",
+                note: note || "Stock added manually",
+                createdBy: req.user?.email || "admin",
+            }], { session });
 
-        // ✅ Commit transaction
-        await session.commitTransaction();
-        session.endSession();
+            return updatedProduct;
+        });
 
         res.status(200).json({
             message: "Stock added successfully",
-            stock: updatedProduct.stock,
+            stock: result.stock,
         });
 
     } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
-
         console.error(error);
-
         res.status(400).json({
             message: error.message || "Server error"
         });

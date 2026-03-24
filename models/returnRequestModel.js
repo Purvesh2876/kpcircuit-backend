@@ -71,6 +71,11 @@ const returnRequestSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "Order",
         },
+        images: [
+            {
+                type: String,
+            },
+        ],
         statusHistory: [returnStatusHistorySchema],
     },
     { timestamps: true }

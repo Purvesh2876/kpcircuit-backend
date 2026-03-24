@@ -42,16 +42,25 @@ const storage = multer.diskStorage({
         }
         else if (req.baseUrl.includes('/api/products')) {
             // Product route
-            const productName = req.body.name; // Get the product name from the request body
-            folderPath = `uploads/products/${productName}`; // Path for product uploads
+            const productName = req.body.name;
+            folderPath = `uploads/products/${productName}`;
+        }
+        else if (req.baseUrl.includes('/api/returns') || req.baseUrl.includes('/api/order')) {
+            // Returns route
+            folderPath = `uploads/returns`;
+        }
+
+        // 🛡️ Fallback to a temp folder if still undefined to prevent CRASH
+        if (!folderPath) {
+            folderPath = 'uploads/temp';
         }
 
         // Create the directory if it doesn't exist
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath, { recursive: true });
+        if (!fs.existsSync(path.join(__dirname, '../', folderPath))) {
+            fs.mkdirSync(path.join(__dirname, '../', folderPath), { recursive: true });
         }
 
-        cb(null, folderPath); // Callback with null error and the destination folder
+        cb(null, path.join(__dirname, '../', folderPath));
     },
     filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);

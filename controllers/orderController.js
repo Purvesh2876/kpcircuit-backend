@@ -348,8 +348,10 @@ exports.getSingleOrder = async (req, res) => {
             });
         }
 
-        // 🔐 Security Check
-        if (order.user.toString() !== req.user._id) {
+        // 🔐 Security Check (Allow the owner of the order OR an Admin)
+        const isAdmin = req.user.role === 'admin' || (Array.isArray(req.user.role) && req.user.role.includes('admin'));
+
+        if (order.user.toString() !== req.user._id.toString() && !isAdmin) {
             return res.status(403).json({
                 success: false,
                 message: "Not authorized to access this order",
