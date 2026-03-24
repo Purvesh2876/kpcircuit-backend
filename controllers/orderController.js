@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Order = require('../models/orderModel');
 const paymentModel = require("../models/paymentModel");
 const customer = require("../models/userModel");
@@ -337,9 +338,17 @@ exports.myOrders = async (req, res) => {
 exports.getSingleOrder = async (req, res) => {
     console.log("Get Single Order - User ID:", req.user._id, "Order ID:", req.params.id); // Debugging line
     try {
-        const order = await Order.findById(req.params.id)
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Order ID format",
+            });
+        }
+
+        const order = await Order.findById(id)
             .populate("items.product");
-        console.log("Fetched Order:", order.user.toString(), 2, req.user._id); // Debugging line
 
         if (!order) {
             return res.status(404).json({

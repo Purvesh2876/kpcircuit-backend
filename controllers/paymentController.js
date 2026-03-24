@@ -61,6 +61,7 @@ const verifyPayment = async (req, res) => {
             success: true,
             message: "Payment verified and order finalized successfully",
             order,
+            orderId: order._id, // Added for frontend compatibility
         });
 
     } catch (error) {
