@@ -2,13 +2,16 @@ const mongoose = require("mongoose");
 
 const paymentSchema = new mongoose.Schema({
   customerid: {
-    type: mongoose.Schema.Types.ObjectId, // Link to the customer/user
-    ref: "Customer", // Assuming you have a Customer model
-    required: true,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User", // Assuming you use User model
+    required: false,
+  },
+  payment_id: {
+    type: String,
   },
   entity: {
     type: String,
-    required: true,
+    required: false,
   },
   amount: {
     type: Number,
@@ -20,7 +23,7 @@ const paymentSchema = new mongoose.Schema({
   },
   amount_due: {
     type: Number,
-    required: true,
+    required: false,
   },
   currency: {
     type: String,
@@ -28,7 +31,7 @@ const paymentSchema = new mongoose.Schema({
   },
   receipt: {
     type: String,
-    required: true,
+    required: false,
   },
   status: {
     type: String,

@@ -65,7 +65,7 @@ const orderSchema = new mongoose.Schema(
     },
     orderStatus: {
       type: String,
-      enum: ["pending", "placed", "packed", "shipped", "delivered", "cancelled"],
+      enum: ["pending", "placed", "packed", "shipped", "delivered", "cancelled", "refunded", "returned", "replaced"],
       default: "placed",
     },
     isReplacement: {
@@ -75,6 +75,14 @@ const orderSchema = new mongoose.Schema(
     originalOrder: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",
+    },
+    refundStatus: {
+      type: String,
+      enum: ["NONE", "PENDING", "PROCESSED", "FAILED"],
+      default: "NONE",
+    },
+    refundId: {
+      type: String,
     },
   },
   {

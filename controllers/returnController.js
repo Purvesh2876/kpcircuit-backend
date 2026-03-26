@@ -64,7 +64,7 @@ exports.createReturnRequest = catchAsyncErrors(async (req, res, next) => {
             return next(new ErrorHander(`A return request for "${product.name}" already exists for this order.`, 400));
         }
     }
-    const images = req.files 
+    const images = req.files
         ? req.files.map(file => `/returns/${file.filename}`)
         : [];
 
@@ -233,42 +233,48 @@ exports.adminProcessReturn = catchAsyncErrors(async (req, res, next) => {
     }
 });
 
+const { refundOrder } = require("../utils/orderService");
+
 exports.processRefund = catchAsyncErrors(async (req, res, next) => {
     const dbUser = await User.findById(req.user._id);
-    if (!dbUser || !dbUser.role.includes('admin')) {
-        return next(new ErrorHander('Not authorized to access this resource.', 403));
+    if (!dbUser || !dbUser.role.includes("admin")) {
+        return next(new ErrorHander("Not authorized to access this resource.", 403));
     }
 
-    const returnRequest = await ReturnRequest.findById(req.params.id);
+    const returnRequest = await ReturnRequest.findById(req.params.id).populate("order");
     if (!returnRequest) {
-        return next(new ErrorHander('Return request not found.', 404));
+        return next(new ErrorHander("Return request not found.", 404));
     }
 
-    if (returnRequest.status !== 'RECEIVED') {
+    if (returnRequest.status !== "RECEIVED") {
         return next(new ErrorHander(`Refund can only be processed for RECEIVED returns. Current status: ${returnRequest.status}`, 400));
     }
 
-    if (returnRequest.refundStatus === 'PROCESSED') {
-        return next(new ErrorHander('Refund has already been processed.', 400));
+    if (returnRequest.refundStatus === "PROCESSED") {
+        return next(new ErrorHander("Refund has already been processed.", 400));
     }
 
-    // In a real application, you would integrate with a payment gateway here
-    // to process the actual refund. For this simulation, we'll just update the status.
+    try {
+        // 🚀 REAL RAZORPAY REFUND
+        await refundOrder(returnRequest.order, dbUser.email);
 
-    returnRequest.refundStatus = 'PROCESSED';
-    returnRequest.status = 'COMPLETED';
-    returnRequest.statusHistory.push({
-        status: 'COMPLETED',
-        updatedBy: dbUser.email,
-    });
+        returnRequest.refundStatus = "PROCESSED";
+        returnRequest.status = "COMPLETED";
+        returnRequest.statusHistory.push({
+            status: "COMPLETED",
+            updatedBy: dbUser.email,
+        });
 
-    await returnRequest.save();
+        await returnRequest.save();
 
-    res.status(200).json({
-        success: true,
-        message: 'Refund processed and request completed.',
-        data: returnRequest,
-    });
+        res.status(200).json({
+            success: true,
+            message: "Refund processed via Razorpay and request completed.",
+            data: returnRequest,
+        });
+    } catch (error) {
+        return next(new ErrorHander(`Refund failed: ${error.message}`, 500));
+    }
 });
 
 // For an admin to create a replacement order
@@ -376,14 +382,18 @@ exports.createReplacementOrder = catchAsyncErrors(async (req, res, next) => {
         const savedOrder = await newOrder.save();
 
         // Update the return request
-        returnRequest.replacementOrder = savedOrder._id;
-        returnRequest.status = 'COMPLETED';
-        returnRequest.statusHistory.push({
-            status: 'COMPLETED',
+        await returnRequest.save();
+
+        // 🚀 Update the ORIGINAL order status to 'replaced'
+        const originalOrder = returnRequest.order;
+        originalOrder.orderStatus = 'replaced';
+        if (!originalOrder.statusHistory) originalOrder.statusHistory = [];
+        originalOrder.statusHistory.push({
+            status: 'replaced',
+            timestamp: new Date(),
             updatedBy: dbUser.email,
         });
-
-        await returnRequest.save();
+        await originalOrder.save();
 
         res.status(201).json({
             success: true,

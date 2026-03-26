@@ -1,6 +1,11 @@
 const nodeMailer = require("nodemailer");
 
 const sendEmail = async (options) => {
+  if (!options.email) {
+    console.warn("Email notification skipped: No recipient defined.");
+    return;
+  }
+
   // Configure Nodemailer
   const transporter = nodeMailer.createTransport({
     service: 'Gmail',
@@ -9,22 +14,21 @@ const sendEmail = async (options) => {
       pass: 'bkex wcgu jswu hbtj',
     },
   });
+
   const mailOptions = {
-    from: process.env.SMPT_MAIL,
+    from: process.env.SMPT_MAIL || 'prxdevs@gmail.com',
     to: options.email,
     subject: options.subject,
     html: options.message,
   };
 
-  await transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: 'Failed to send OTP' });
-    } else {
-      console.log('Email sent: ' + info.response);
-      // return res.status(200).json({ message: 'OTP sent successfully' });
-    }
-  });
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent: ' + info.response);
+  } catch (error) {
+    console.error('Error sending email:', error.message);
+    // We don't throw here to avoid crashing the main process for a failed notification
+  }
 };
 
 module.exports = sendEmail;

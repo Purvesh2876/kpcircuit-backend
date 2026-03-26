@@ -10,6 +10,7 @@ const productModel = require('../models/productModel');
 const categoryModel = require('../models/categoryModel');
 const subcategoryModel = require('../models/subcategoryModel');
 const orderModel = require('../models/orderModel');
+const ReturnRequest = require('../models/returnRequestModel');
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 2 * 60 * 60 * 1000; // 2 hours
@@ -555,7 +556,8 @@ exports.getDashboardStats = async (req, res) => {
             totalSubCategories,
             outOfStockProducts,
             totalOrders,
-            pendingOrders
+            pendingOrders,
+            pendingReturns
         ] = await Promise.all([
             User.countDocuments(),
             productModel.countDocuments(),
@@ -569,7 +571,10 @@ exports.getDashboardStats = async (req, res) => {
             orderModel.countDocuments(),
 
             // ⏳ Pending Orders
-            orderModel.countDocuments({ orderStatus: { $ne: "delivered" } })
+            orderModel.countDocuments({ orderStatus: { $ne: "delivered" } }),
+
+            // 🔄 Pending Returns
+            ReturnRequest.countDocuments({ status: "REQUESTED" })
         ]);
 
         res.status(200).json({
@@ -582,7 +587,8 @@ exports.getDashboardStats = async (req, res) => {
 
                 outOfStock: outOfStockProducts,
                 totalOrders: totalOrders,
-                pendingOrders: pendingOrders
+                pendingOrders: pendingOrders,
+                pendingReturns: pendingReturns
             }
         });
 

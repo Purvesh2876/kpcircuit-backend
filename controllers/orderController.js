@@ -442,29 +442,45 @@ exports.adminAllOrders = async (req, res) => {
     }
 };
 
+const { cancelAndRestockOrder, refundOrder } = require('../utils/orderService');
+
 // ADMIN - Update Order Status
-// ADMIN: Update Order Status
 exports.updateOrderStatus = async (req, res) => {
     try {
         const { status } = req.body;
+        const { id } = req.params;
 
-        const order = await Order.findById(req.params.id);
+        let order;
+        if (status === 'cancelled') {
+            // 🚀 Logic for Cancellation & Restocking
+            order = await cancelAndRestockOrder(id, req.user.email);
+            
+            // If it was paid, initiate automatic Razorpay Refund
+            if (order.paymentStatus === 'paid' && order.refundStatus === 'PENDING') {
+                try {
+                    await refundOrder(order, req.user.email);
+                } catch (refundError) {
+                    console.error("Auto-Refund Error:", refundError.message);
+                    // Log but don't fail the whole cancellation
+                }
+            }
+        } else {
+            order = await Order.findById(id);
+            if (!order) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Order not found",
+                });
+            }
 
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: "Order not found",
+            order.orderStatus = status;
+            order.statusHistory.push({
+                status: status,
+                timestamp: new Date(),
+                updatedBy: req.user.email
             });
+            await order.save();
         }
-
-        order.orderStatus = status;
-        // 2. ADDED: Push new status and timestamp to history array
-        order.statusHistory.push({
-            status: req.body.status,
-            timestamp: new Date(),
-            updatedBy: req.user.email // Assuming req.user contains admin's email
-        });
-        await order.save();
 
         res.status(200).json({
             success: true,
@@ -475,7 +491,7 @@ exports.updateOrderStatus = async (req, res) => {
         console.error("Update Order Error:", error);
         res.status(500).json({
             success: false,
-            message: "Server error updating order",
+            message: error.message || "Server error updating order",
         });
     }
 };

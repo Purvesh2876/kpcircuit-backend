@@ -1,4 +1,5 @@
 # env file
 .env
+uploads
 # node_modules
 node_modules
