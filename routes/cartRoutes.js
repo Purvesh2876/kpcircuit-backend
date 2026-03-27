@@ -10,7 +10,7 @@ router.post('/add', isAuthenticated, addToCart);
 router.get('/', isAuthenticated, getCart);
 
 // Route to update cart item
-router.put('/update', updateCartItem);
+router.put('/update', isAuthenticated, updateCartItem);
 
 // Route to remove item from cart
 router.post('/remove', isAuthenticated, removeCartItem);

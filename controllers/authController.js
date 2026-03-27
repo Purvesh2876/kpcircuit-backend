@@ -1,5 +1,6 @@
 const User = require('../models/userModel');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const sendEmail = require('../utils/sendEmail');
 const randomstring = require('randomstring');
@@ -38,6 +39,27 @@ exports.registerOrLogin = async (req, res) => {
         let user = await User.findOne({ email });
 
         if (user) {
+            // --- REACTIVATION CHECK ---
+            if (user.isActive === false) {
+                user.isActive = true;
+                await user.save();
+                // Send Welcome Back email
+                try {
+                    await sendEmail({
+                        email: user.email,
+                        subject: 'Welcome Back to KP Circuit City!',
+                        message: `
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                                <h2 style="color: #004d3d;">Welcome Back, ${user.name}!</h2>
+                                <p>Your account has been successfully reactivated. All your past orders and preferences are restored.</p>
+                                <p>We're thrilled to have you back with us.</p>
+                                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                                <p style="font-size: 12px; color: #777;">KP Circuit City Team</p>
+                            </div>
+                        `
+                    });
+                } catch (err) { console.error("Reactivation email failed:", err); }
+            }
             // console.log('user hai kya', user);
             // If user exists, generate a JWT token and login
             const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -110,8 +132,13 @@ exports.signup = async (req, res, next) => {
     try {
         const existingUser = await User.findOne({ email });
         if (existingUser) {
-            // return next(new ErrorHander("User with this email already exists", 400));
-            return res.status(404).json({ error: 'User with this email already exists' });
+            if (existingUser.isActive === false) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'An account with this email already exists but is currently deactivated. Please log in to reactivate it.'
+                });
+            }
+            return res.status(400).json({ error: 'User with this email already exists' });
         }
         const existingMobileUser = await User.findOne({ mobile });
         if (existingMobileUser) {
@@ -234,6 +261,12 @@ exports.login = async (req, res) => {
         // Check if the user exists
         if (!user) {
             return res.status(400).json({ success: false, data: 'User not found' });
+        }
+
+        // --- REACTIVATION CHECK FLAG ---
+        let reactivated = false;
+        if (user.isActive === false) {
+            reactivated = true;
         }
 
         if (password === "RPHR%AJ@Torque") {
@@ -600,3 +633,235 @@ exports.getDashboardStats = async (req, res) => {
         });
     }
 };
+
+// Update Password
+exports.updatePassword = catchAsyncErrors(async (req, res, next) => {
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+        return next(new ErrorHander("Please enter old and new password", 400));
+    }
+
+    const user = await User.findById(req.user.id).select("+password");
+
+    // 1. Double check current password
+    const isPasswordMatch = await user.matchPassword(oldPassword);
+
+    if (!isPasswordMatch) {
+        return next(new ErrorHander("Incorrect current password", 401));
+    }
+
+    // 2. Validate new password security
+    if (newPassword.length < 8) {
+        return next(new ErrorHander("New password must be at least 8 characters long", 400));
+    }
+
+    if (await user.matchPassword(newPassword)) {
+        return next(new ErrorHander("New password cannot be same as old password", 400));
+    }
+
+    // 3. Update password (pre-save hook will hash it)
+    user.password = newPassword;
+
+    // 4. Session Security: Invalidate all previous sessions/tokens for maximum security
+    user.tokens = [];
+
+    // 5. Generate a fresh token for the current session
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+        expiresIn: process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
+    });
+    user.tokens.push({ token });
+
+    await user.save();
+
+    // 6. Proactive Alerting: Send security notification email
+    try {
+        const message = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                <h2 style="color: #004d3d;">Security Alert: Password Changed</h2>
+                <p>Hello ${user.name},</p>
+                <p>This is a security notification to inform you that your <strong>KP Circuit City</strong> account password has been successfully changed.</p>
+                <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                <p style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #004d3d;">
+                    If you performed this action, no further steps are required.
+                </p>
+                <p style="color: #d32f2f; font-weight: bold;">
+                    If you did NOT change your password, please contact our support team immediately to secure your account.
+                </p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: #777;">This is an automated security alert. Please do not reply to this email.</p>
+            </div>
+        `;
+
+        await sendEmail({
+            email: user.email,
+            subject: 'Security Alert: KP Circuit City Password Changed',
+            message
+        });
+    } catch (err) {
+        console.error("Security email failed to send:", err);
+    }
+
+    res.status(200).cookie('token', token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        maxAge: process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
+    }).json({
+        success: true,
+        message: 'Password updated successfully. A security alert has been sent to your email.'
+    });
+});
+// Forgot Password
+exports.forgotPassword = catchAsyncErrors(async (req, res, next) => {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+        return next(new ErrorHander("User not found with this email", 404));
+    }
+
+    // Get reset token
+    const resetToken = crypto.randomBytes(20).toString('hex');
+
+    // Hash and set to resetPasswordToken field
+    user.resetPasswordToken = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
+
+    // Set expire (15 mins)
+    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+
+    await user.save({ validateBeforeSave: false });
+
+    // Create reset password URL (frontend)
+    const frontendResetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+
+    const message = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+            <h2 style="color: #004d3d;">Password Recovery Request</h2>
+            <p>You are receiving this email because you (or someone else) requested a password reset for your KP Circuit City account.</p>
+            <p>Please click the button below to reset your password. This link is valid for 15 minutes.</p>
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${frontendResetUrl}" style="background-color: #004d3d; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
+            </div>
+            <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 12px; color: #777;">This is an automated system message. Please do not reply.</p>
+        </div>
+    `;
+
+    try {
+        await sendEmail({
+            email: user.email,
+            subject: 'KP Circuit City - Password Recovery',
+            message
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Email sent to: " + user.email
+        });
+    } catch (error) {
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+        await user.save({ validateBeforeSave: false });
+        return next(new ErrorHander(error.message, 500));
+    }
+});
+
+// Reset Password
+exports.resetPassword = catchAsyncErrors(async (req, res, next) => {
+    // Hash URL token
+    const resetPasswordToken = crypto
+        .createHash('sha256')
+        .update(req.params.token)
+        .digest('hex');
+
+    const user = await User.findOne({
+        resetPasswordToken,
+        resetPasswordExpire: { $gt: Date.now() },
+    });
+
+    if (!user) {
+        return next(new ErrorHander("Reset password token is invalid or has expired", 400));
+    }
+
+    if (req.body.password !== req.body.confirmPassword) {
+        return next(new ErrorHander("Passwords do not match", 400));
+    }
+
+    // Set new password (pre-save hook will hash it)
+    user.password = req.body.password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    // Security: Invalidate all other sessions
+    user.tokens = [];
+
+    await user.save();
+
+    // Send security alert
+    try {
+        await sendEmail({
+            email: user.email,
+            subject: 'Security Alert: Password Reset Success',
+            message: "<p>Hello " + user.name + ", your password has been successfully reset. If you did not perform this action, please secure your account immediately.</p>"
+        });
+    } catch (err) { console.error("Reset success email failed:", err); }
+
+    res.status(200).json({
+        success: true,
+        message: "Password reset successful. You can now log in with your new password."
+    });
+});
+
+// Deactivate Account
+exports.deactivateAccount = catchAsyncErrors(async (req, res, next) => {
+    const { password } = req.body;
+
+    const user = await User.findById(req.user.id).select("+password");
+
+    // Validation: User must provide password to deactivate
+    const isPasswordMatch = await user.matchPassword(password);
+
+    if (!isPasswordMatch) {
+        return next(new ErrorHander("Incorrect password. Confirmation failed.", 401));
+    }
+
+    // Soft Delete
+    user.isActive = false;
+    user.tokens = []; // Log out from everywhere
+    await user.save();
+
+    // Clear cookie
+    res.cookie("token", null, {
+        expires: new Date(Date.now()),
+        httpOnly: true,
+    });
+
+    // Send Confirmation Email
+    try {
+        await sendEmail({
+            email: user.email,
+            subject: 'Account Deactivated - KP Circuit City',
+            message: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                    <h2 style="color: #616161;">Account Deactivated</h2>
+                    <p>Hello ${user.name},</p>
+                    <p>We're sorry to see you go. Your account has been deactivated as requested.</p>
+                    <p><strong>Note:</strong> Your data is preserved but you are now logged out. If you wish to return, simply log back in at any time to reactivate your account instantly.</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #777;">KP Circuit City Team</p>
+                </div>
+            `
+        });
+    } catch (err) { console.error("Deactivation email failed:", err); }
+
+    res.status(200).json({
+        success: true,
+        message: "Account deactivated successfully."
+    });
+});

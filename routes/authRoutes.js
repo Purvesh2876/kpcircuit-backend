@@ -1,5 +1,5 @@
 const express = require('express');
-const { signup, login, activateUser, updateUserRole, getSingleUser, logout, registerOrLogin, adminLogin, getAllUsers, updateUser, getDashboardStats } = require('../controllers/authController');
+const { signup, login, activateUser, updateUserRole, getSingleUser, logout, registerOrLogin, adminLogin, getAllUsers, updateUser, getDashboardStats, updatePassword, forgotPassword, resetPassword, deactivateAccount } = require('../controllers/authController');
 const { isAuthenticated, authorizeRoles } = require('../middlewares/authMiddleware');
 const router = express.Router();
 
@@ -24,6 +24,9 @@ router.post('/logout', logout);
 // Get Single User route
 router.post('/getSingleUser', isAuthenticated, getSingleUser);
 
+// Update Password route
+router.put('/updatePassword', isAuthenticated, updatePassword);
+
 //Google login/signup api
 router.post('/registerOrLogin', registerOrLogin);
 
@@ -35,5 +38,12 @@ router.put('/updateUser/:id', isAuthenticated, authorizeRoles('admin'), updateUs
 
 // getDashboardStats API
 router.get('/getDashboardStats', isAuthenticated, authorizeRoles('admin'), getDashboardStats);
+
+// Forgot Password & Reset Password
+router.post('/password/forgot', forgotPassword);
+router.put('/password/reset/:token', resetPassword);
+
+// Deactivate Account
+router.put('/deactivate', isAuthenticated, deactivateAccount);
 
 module.exports = router;
