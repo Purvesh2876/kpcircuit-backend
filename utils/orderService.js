@@ -58,8 +58,8 @@ exports.finalizeOrder = async (orderId, razorpayPaymentId, updatedBy = 'system')
 
         // 4. UPDATE ORDER STATUS
         order.paymentStatus = 'paid';
-        if (order.orderStatus === 'placed' || order.orderStatus === 'pending') {
-            order.orderStatus = 'packed';
+        if (order.orderStatus === 'pending') {
+            order.orderStatus = 'payment confirmed';
         }
 
         order.statusHistory.push({

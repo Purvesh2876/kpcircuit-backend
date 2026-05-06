@@ -1,5 +1,5 @@
 const express = require('express');
-const { signup, login, activateUser, updateUserRole, getSingleUser, logout, registerOrLogin, adminLogin, getAllUsers, updateUser, getDashboardStats, updatePassword, forgotPassword, resetPassword, deactivateAccount } = require('../controllers/authController');
+const { signup, login, activateUser, updateUserRole, getSingleUser, logout, registerOrLogin, adminLogin, getAllUsers, updateUser, getDashboardStats, updatePassword, forgotPassword, resetPassword, deactivateAccount, saveAddress, deleteAddress } = require('../controllers/authController');
 const { isAuthenticated, authorizeRoles } = require('../middlewares/authMiddleware');
 const router = express.Router();
 
@@ -45,5 +45,9 @@ router.put('/password/reset/:token', resetPassword);
 
 // Deactivate Account
 router.put('/deactivate', isAuthenticated, deactivateAccount);
+
+// Saved Addresses
+router.post('/address', isAuthenticated, saveAddress);
+router.delete('/address/:id', isAuthenticated, deleteAddress);
 
 module.exports = router;

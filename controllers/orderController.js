@@ -451,17 +451,23 @@ exports.updateOrderStatus = async (req, res) => {
         const { id } = req.params;
 
         let order;
+        let refundInitiated = false;
+        let refundError = null;
+
         if (status === 'cancelled') {
-            // 🚀 Logic for Cancellation & Restocking
             order = await cancelAndRestockOrder(id, req.user.email);
-            
-            // If it was paid, initiate automatic Razorpay Refund
-            if (order.paymentStatus === 'paid' && order.refundStatus === 'PENDING') {
+
+            if (order.paymentStatus === 'paid') {
+                // Re-fetch fresh — the order returned from the transaction has a committed
+                // session attached internally; calling save() on it would throw silently
+                const freshOrder = await Order.findById(id);
                 try {
-                    await refundOrder(order, req.user.email);
-                } catch (refundError) {
-                    console.error("Auto-Refund Error:", refundError.message);
-                    // Log but don't fail the whole cancellation
+                    await refundOrder(freshOrder, req.user.email);
+                    refundInitiated = true;
+                    order = freshOrder;
+                } catch (err) {
+                    refundError = err.message;
+                    console.error("Auto-Refund Error:", err.message);
                 }
             }
         } else {
@@ -486,6 +492,8 @@ exports.updateOrderStatus = async (req, res) => {
             success: true,
             message: `Order status updated to ${status}`,
             order,
+            refundInitiated,
+            refundError,
         });
     } catch (error) {
         console.error("Update Order Error:", error);

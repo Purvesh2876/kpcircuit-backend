@@ -9,7 +9,8 @@ const {
     deleteProduct,
     searchProducts,
     addStock,
-    getInventoryLogs
+    getInventoryLogs,
+    getSimilarProducts,
 } = require('../controllers/productController');
 
 const { isAuthenticated, authorizeRoles } = require('../middlewares/authMiddleware');
@@ -29,6 +30,9 @@ router.get("/:id/inventory", isAuthenticated, authorizeRoles('admin'), getInvent
 router.get('/', getAllProducts);
 
 router.get('/search', searchProducts);
+
+// Get similar products (must be before /:id to avoid conflict)
+router.get('/:id/similar', getSimilarProducts);
 
 // Get a single product by ID
 router.get('/:id', getProductById);

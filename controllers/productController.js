@@ -459,6 +459,42 @@ exports.updateProduct = async (req, res) => {
 };
 
 
+exports.getSimilarProducts = async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id).select('subCategory category');
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+
+        // Primary: same subcategory, exclude current product
+        let similar = await Product.find({
+            _id: { $ne: req.params.id },
+            subCategory: product.subCategory,
+            isActive: true,
+        })
+            .select('name price images')
+            .limit(4);
+
+        // Fallback: fill remaining slots from same category
+        if (similar.length < 4) {
+            const excludeIds = [req.params.id, ...similar.map(p => p._id)];
+            const extra = await Product.find({
+                _id: { $nin: excludeIds },
+                category: product.category,
+                isActive: true,
+            })
+                .select('name price images')
+                .limit(4 - similar.length);
+
+            similar = [...similar, ...extra];
+        }
+
+        res.status(200).json({ success: true, products: similar });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // Delete a product
 exports.deleteProduct = async (req, res) => {
     try {

@@ -3,12 +3,21 @@ const bcrypt = require('bcryptjs'); // For hashing passwords
 
 const userSchema = new mongoose.Schema(
   {
-    username: {
+    companyName: {
       type: String,
-      // required: [true, 'Please enter your username'],
-      // unique: true,
-      sparse: true, // Allows for some users (Google sign-in) to skip this field
+      sparse: true,
     },
+    savedAddresses: [
+      {
+        firstName: { type: String, required: true },
+        lastName: { type: String, default: '' },
+        phone: { type: String, required: true },
+        email: { type: String, required: true },
+        address: { type: String, required: true },
+        city: { type: String, required: true },
+        pincode: { type: String, required: true },
+      }
+    ],
     mobile: {
       type: String,
       // required: [true, 'Please enter your mobile number'],

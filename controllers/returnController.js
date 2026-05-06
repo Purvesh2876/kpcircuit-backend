@@ -373,8 +373,8 @@ exports.createReplacementOrder = catchAsyncErrors(async (req, res, next) => {
             totalAmount: 0,
             orderId: `REPL-${returnRequest.order.orderId}`,
             paymentStatus: 'paid', // Replacement is pre-authorized
-            orderStatus: 'placed',
-            statusHistory: [{ status: 'placed', timestamp: new Date(), updatedBy: 'system' }],
+            orderStatus: 'payment confirmed',
+            statusHistory: [{ status: 'payment confirmed', timestamp: new Date(), updatedBy: 'system' }],
             isReplacement: true,
             originalOrder: returnRequest.order._id
         });

@@ -123,9 +123,9 @@ function generateOTP(lengthChar) {
 }
 
 exports.signup = async (req, res, next) => {
-    const { username, email, password, name, mobile, dob } = req.body;
+    const { companyName, email, password, name, mobile, dob } = req.body;
     console.log("1");
-    if (!email || !password || !username || !name || !mobile || !dob) {
+    if (!email || !password || !name || !mobile || !dob) {
         return next(new ErrorHander("All Details are required", 400));
     }
 
@@ -151,7 +151,7 @@ exports.signup = async (req, res, next) => {
         const newUser = await User.create({
             email,
             password,
-            username,
+            companyName: companyName || undefined,
             name,
             mobile,
             dob,
@@ -816,6 +816,43 @@ exports.resetPassword = catchAsyncErrors(async (req, res, next) => {
         success: true,
         message: "Password reset successful. You can now log in with your new password."
     });
+});
+
+// Save Address
+exports.saveAddress = catchAsyncErrors(async (req, res, next) => {
+    const user = await User.findById(req.user);
+    if (!user) return next(new ErrorHander("User not found", 404));
+
+    if (user.savedAddresses.length >= 3) {
+        return res.status(400).json({ success: false, message: 'You can save a maximum of 3 addresses' });
+    }
+
+    const { firstName, lastName, phone, email, address, city, pincode } = req.body;
+    if (!firstName || !phone || !email || !address || !city || !pincode) {
+        return res.status(400).json({ success: false, message: 'All address fields are required' });
+    }
+
+    user.savedAddresses.push({ firstName, lastName: lastName || '', phone, email, address, city, pincode });
+    await user.save();
+
+    res.status(200).json({ success: true, data: user.savedAddresses });
+});
+
+// Delete Address
+exports.deleteAddress = catchAsyncErrors(async (req, res, next) => {
+    const user = await User.findById(req.user);
+    if (!user) return next(new ErrorHander("User not found", 404));
+
+    const addressId = req.params.id;
+    const before = user.savedAddresses.length;
+    user.savedAddresses = user.savedAddresses.filter(a => a._id.toString() !== addressId);
+
+    if (user.savedAddresses.length === before) {
+        return res.status(404).json({ success: false, message: 'Address not found' });
+    }
+
+    await user.save();
+    res.status(200).json({ success: true, data: user.savedAddresses });
 });
 
 // Deactivate Account
